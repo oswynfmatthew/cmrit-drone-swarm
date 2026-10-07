@@ -22,8 +22,10 @@ PANEL_W = 320
 SCREEN_W = WIDTH + PANEL_W
 FPS = 60
 
-STATE_FILE = "state.json"
-COMMAND_FILE = "commands.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+STATE_FILE = os.path.join(BASE_DIR, "state.json")
+COMMAND_FILE = os.path.join(BASE_DIR, "commands.json")
 
 BG = (18, 24, 35)
 PANEL = (28, 36, 50)
