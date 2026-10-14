@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Drone, EnvironmentType, MovingObstacle, Target, Task } from '../types';
+import { Drone, EnvironmentType, Target, Task } from '../types';
 import { CELL, GRID_H, GRID_W, HEIGHT, WIDTH, pointKey } from '../swarmEngine';
 import {
   Eye,
@@ -9,6 +9,10 @@ import {
   RotateCcw,
   Share2,
   Mountain,
+  Upload,
+  Layers,
+  X,
+  CheckCircle,
 } from 'lucide-react';
 
 interface SimulationCanvasProps {
@@ -16,7 +20,6 @@ interface SimulationCanvasProps {
   targets: Record<string, Target>;
   tasks: Task[];
   blocked: Set<string>;
-  movingObstacles: MovingObstacle[];
   selectedDroneId: string | null;
   onSelectDrone: (id: string | null) => void;
   onAddTargetAt: (cellX: number, cellY: number) => void;
@@ -24,6 +27,11 @@ interface SimulationCanvasProps {
   environment: EnvironmentType;
   onChangeEnvironment: (env: EnvironmentType) => void;
   darknessLevel: number;
+  // Image Upload Integration
+  backgroundImageUrl: string | null;
+  backgroundImageName: string | null;
+  onOpenUploadModal: () => void;
+  onClearBackgroundImage: () => void;
 }
 
 export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
@@ -31,7 +39,6 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   targets,
   tasks,
   blocked,
-  movingObstacles,
   selectedDroneId,
   onSelectDrone,
   onAddTargetAt,
@@ -39,9 +46,14 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   environment,
   onChangeEnvironment,
   darknessLevel,
+  backgroundImageUrl,
+  backgroundImageName,
+  onOpenUploadModal,
+  onClearBackgroundImage,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const bgImageElementRef = useRef<HTMLImageElement | null>(null);
 
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(null);
   const [showPaths, setShowPaths] = useState(true);
@@ -51,8 +63,30 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   const [showMeshLinks, setShowMeshLinks] = useState(true);
   const [showVoxelGrid, setShowVoxelGrid] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const gridOverlayOpacity = 0.35;
 
-  // Canvas render animation loop
+  // Load background image into Image object
+  useEffect(() => {
+    if (backgroundImageUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = backgroundImageUrl;
+      img.onload = () => {
+        bgImageElementRef.current = img;
+      };
+      img.onerror = () => {
+        const retryImg = new Image();
+        retryImg.src = backgroundImageUrl;
+        retryImg.onload = () => {
+          bgImageElementRef.current = retryImg;
+        };
+      };
+    } else {
+      bgImageElementRef.current = null;
+    }
+  }, [backgroundImageUrl]);
+
+  // Main canvas render loop
   useEffect(() => {
     let animationId: number;
     const canvas = canvasRef.current;
@@ -63,19 +97,35 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
     const render = (time: number) => {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-      // Environment Backdrop
-      if (environment === 'SUBTERRANEAN_CAVE') {
-        ctx.fillStyle = '#0a0e17'; // Pitch black cave interior
-      } else if (environment === 'GPS_DENIED_FOREST') {
-        ctx.fillStyle = '#0c151c'; // Forest ruins
-      } else {
-        ctx.fillStyle = '#121823';
-      }
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      // 1. Draw Background: Uploaded Satellite Image OR Tactical Dark Environment
+      if (bgImageElementRef.current) {
+        // Draw the uploaded photo / satellite image
+        ctx.drawImage(bgImageElementRef.current, 0, 0, WIDTH, HEIGHT);
 
-      // Draw Voxel Grid / Ambient Background Grids
+        // Optional dark vignette for night / cave missions
+        if (darknessLevel > 0) {
+          ctx.fillStyle = `rgba(10, 16, 26, ${darknessLevel * 0.65})`;
+          ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        }
+      } else {
+        // Procedural environments
+        if (environment === 'SUBTERRANEAN_CAVE') {
+          ctx.fillStyle = '#0a0e17';
+        } else if (environment === 'GPS_DENIED_FOREST') {
+          ctx.fillStyle = '#0c151c';
+        } else {
+          ctx.fillStyle = '#121823';
+        }
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      }
+
+      // 2. Draw Grid Lines (Subtle overlay when satellite image is active)
       if (showVoxelGrid) {
-        ctx.strokeStyle = environment === 'SUBTERRANEAN_CAVE' ? '#141d2c' : '#1e2838';
+        if (bgImageElementRef.current) {
+          ctx.strokeStyle = `rgba(56, 189, 248, ${gridOverlayOpacity * 0.4})`;
+        } else {
+          ctx.strokeStyle = environment === 'SUBTERRANEAN_CAVE' ? '#141d2c' : '#1e2838';
+        }
         ctx.lineWidth = 1;
 
         for (let x = 0; x <= WIDTH; x += CELL) {
@@ -93,16 +143,16 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         }
       }
 
-      // Draw Zone Column Backgrounds / Borders if enabled
+      // 3. Draw Zone Column Boundaries if enabled
       if (showZones) {
         const zoneCount = 5;
         const zoneW = Math.floor(GRID_W / zoneCount);
         const zoneColors = [
-          'rgba(56, 189, 248, 0.04)',
-          'rgba(168, 85, 247, 0.04)',
-          'rgba(34, 197, 94, 0.04)',
-          'rgba(249, 115, 22, 0.04)',
-          'rgba(236, 72, 153, 0.04)',
+          'rgba(56, 189, 248, 0.05)',
+          'rgba(168, 85, 247, 0.05)',
+          'rgba(34, 197, 94, 0.05)',
+          'rgba(249, 115, 22, 0.05)',
+          'rgba(236, 72, 153, 0.05)',
         ];
 
         for (let z = 0; z < zoneCount; z++) {
@@ -113,7 +163,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
           ctx.fillStyle = zoneColors[z % zoneColors.length];
           ctx.fillRect(x0, 0, w, HEIGHT);
 
-          ctx.strokeStyle = 'rgba(74, 90, 116, 0.35)';
+          ctx.strokeStyle = 'rgba(74, 90, 116, 0.4)';
           ctx.lineWidth = 1;
           ctx.setLineDash([4, 4]);
           ctx.beginPath();
@@ -122,93 +172,69 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
           ctx.stroke();
           ctx.setLineDash([]);
 
-          ctx.fillStyle = 'rgba(148, 163, 184, 0.4)';
-          ctx.font = '10px ui-monospace, monospace';
+          ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
+          ctx.font = '10px monospace';
           ctx.fillText(`ZONE ${z + 1}`, x0 + 8, 16);
         }
       }
 
-      // Draw Static Obstacles (Cavern Walls / Rubble)
-      blocked.forEach((key) => {
-        const [ox, oy] = key.split(',').map(Number);
-        const px = ox * CELL;
-        const py = oy * CELL;
+      // 4. Draw Obstacles (Cavern Walls) only when not in full satellite picture mode
+      if (!bgImageElementRef.current) {
+        blocked.forEach((key) => {
+          const [ox, oy] = key.split(',').map(Number);
+          const px = ox * CELL;
+          const py = oy * CELL;
 
-        if (environment === 'SUBTERRANEAN_CAVE') {
-          // Rocky subterranean cave wall styling
-          ctx.fillStyle = '#222d3d';
-          ctx.fillRect(px, py, CELL, CELL);
-          ctx.strokeStyle = '#384860';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(px + 1, py + 1, CELL - 2, CELL - 2);
+          if (environment === 'SUBTERRANEAN_CAVE') {
+            ctx.fillStyle = '#222d3d';
+            ctx.fillRect(px, py, CELL, CELL);
+            ctx.strokeStyle = '#384860';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(px + 1, py + 1, CELL - 2, CELL - 2);
+            ctx.fillStyle = '#192230';
+            ctx.fillRect(px + 4, py + 4, CELL - 8, CELL - 8);
+          } else {
+            ctx.fillStyle = '#374150';
+            ctx.strokeStyle = '#4b5563';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(px, py, CELL, CELL);
+            ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
+          }
+        });
+      }
 
-          // Cavern rock texture
-          ctx.fillStyle = '#192230';
-          ctx.fillRect(px + 4, py + 4, CELL - 8, CELL - 8);
-        } else {
-          ctx.fillStyle = '#374150';
-          ctx.strokeStyle = '#4b5563';
-          ctx.lineWidth = 1.5;
-          ctx.fillRect(px, py, CELL, CELL);
-          ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
-        }
-      });
+      // (Note: Floating red dots have been removed as requested!)
 
-      // Draw Moving Obstacles (Triggers Dynamic Window Approach [DWA])
-      movingObstacles.forEach((mo) => {
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
-        ctx.beginPath();
-        ctx.arc(mo.x, mo.y, mo.radius + 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#ef4444';
-        ctx.beginPath();
-        ctx.arc(mo.x, mo.y, mo.radius, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(mo.x, mo.y, mo.radius, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 9px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('DWA', mo.x, mo.y);
-      });
-
-      // Draw Drone Launch Bases
+      // 5. Draw Drone Launch Base Pads
       Object.values(drones).forEach((drone) => {
-        ctx.strokeStyle = 'rgba(90, 170, 255, 0.45)';
+        ctx.strokeStyle = 'rgba(90, 170, 255, 0.6)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(drone.base_x, drone.base_y, 14, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.fillStyle = 'rgba(90, 170, 255, 0.15)';
+        ctx.fillStyle = 'rgba(90, 170, 255, 0.2)';
         ctx.beginPath();
         ctx.arc(drone.base_x, drone.base_y, 14, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = 'rgba(90, 170, 255, 0.8)';
+        ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('BASE', drone.base_x, drone.base_y);
       });
 
-      // Draw Hover Indicator
+      // 6. Draw Hover Indicator
       if (hoverCoord) {
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.2)';
+        ctx.strokeStyle = '#38bdf8';
         ctx.lineWidth = 1.5;
         ctx.fillRect(hoverCoord.x * CELL, hoverCoord.y * CELL, CELL, CELL);
         ctx.strokeRect(hoverCoord.x * CELL, hoverCoord.y * CELL, CELL, CELL);
       }
 
-      // Draw Inter-Drone Swarm Mesh Network Wireless Links (PDF Slide 9)
+      // 7. Draw Inter-Drone Swarm Mesh Network Wireless Links
       if (showMeshLinks) {
         const droneList = Object.values(drones);
         ctx.lineWidth = 1.2;
@@ -222,35 +248,25 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             const dist = Math.hypot(d1.x - d2.x, d1.y - d2.y);
             if (dist <= 300) {
               const alpha = Math.max(0.15, 1 - dist / 300);
-              ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.7})`;
+              ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.75})`;
               ctx.setLineDash([3, 3]);
               ctx.beginPath();
               ctx.moveTo(d1.x, d1.y);
               ctx.lineTo(d2.x, d2.y);
               ctx.stroke();
               ctx.setLineDash([]);
-
-              // Midpoint RSSI marker
-              if (dist < 180) {
-                const mx = (d1.x + d2.x) / 2;
-                const my = (d1.y + d2.y) / 2;
-                ctx.fillStyle = 'rgba(56, 189, 248, 0.6)';
-                ctx.font = '8px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('MESH LINK', mx, my - 3);
-              }
             }
           }
         }
       }
 
-      // Draw Drone Flight Paths (A* waypoints)
+      // 8. Draw Drone Flight Paths
       if (showPaths) {
         Object.values(drones).forEach((drone) => {
           if (!drone.healthy || drone.path.length === 0) return;
 
           const isSelected = selectedDroneId === drone.drone_id;
-          ctx.strokeStyle = isSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.35)';
+          ctx.strokeStyle = isSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.4)';
           ctx.lineWidth = isSelected ? 2 : 1;
           ctx.setLineDash(isSelected ? [3, 2] : [4, 4]);
 
@@ -265,7 +281,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
 
           if (drone.path.length > 0) {
             const last = drone.path[drone.path.length - 1];
-            ctx.fillStyle = isSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.5)';
+            ctx.fillStyle = isSelected ? '#38bdf8' : 'rgba(56, 189, 248, 0.6)';
             ctx.beginPath();
             ctx.arc(last[0] * CELL + CELL / 2, last[1] * CELL + CELL / 2, 3, 0, Math.PI * 2);
             ctx.fill();
@@ -273,7 +289,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         });
       }
 
-      // Draw 360° LiDAR Point Cloud Beams (PDF Slide 3 & 4)
+      // 9. Draw 360° LiDAR Point Cloud Beams
       if (showLidarBeams) {
         Object.values(drones).forEach((drone) => {
           if (!drone.healthy || drone.lidarBeams.length === 0) return;
@@ -282,7 +298,6 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
           const beamAlpha = isSelected ? 0.35 : 0.12;
 
           drone.lidarBeams.forEach((beam) => {
-            // Laser beam ray
             ctx.strokeStyle = `rgba(52, 211, 153, ${beamAlpha})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
@@ -290,7 +305,6 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             ctx.lineTo(beam.hitX, beam.hitY);
             ctx.stroke();
 
-            // Point Cloud hit contact point
             if (beam.hitObstacle) {
               ctx.fillStyle = isSelected ? '#34d399' : 'rgba(52, 211, 153, 0.6)';
               ctx.beginPath();
@@ -301,66 +315,114 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         });
       }
 
-      // Draw Targets & YOLO Bounding Boxes (PDF Slide 5)
+      // 10. Draw Detected Targets DIRECTLY ON THE IMAGE with Tactical Highlights
       Object.values(targets).forEach((target) => {
         const tx = target.x * CELL + CELL / 2;
         const ty = target.y * CELL + CELL / 2;
 
-        if (target.found) {
-          // Found target: Green beacon with badge
-          ctx.strokeStyle = '#50d282';
-          ctx.fillStyle = 'rgba(80, 210, 130, 0.2)';
+        const isSurveyFinished = missionStatus === 'COMPLETE';
+        const isFound = target.found || isSurveyFinished;
+
+        if (isFound) {
+          // Detected Target on Image: Pulsing Tactical Rescue Circle & Corner Brackets
+          const pulse = (Math.sin(time * 0.008) + 1) * 3;
+
+          // Color scheme specified: Human=Blue, Animal=Red, Vehicle=Purple, Damaged Building=Yellow
+          const themeColor =
+            target.type === 'HUMAN'
+              ? '#38bdf8' // Blue
+              : target.type === 'ANIMAL'
+              ? '#ef4444' // Red
+              : target.type === 'VEHICLE'
+              ? '#c084fc' // Purple
+              : '#eab308'; // Yellow (Damaged Building / Crack)
+
+          // Outer pulsing rescue ring
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(tx, ty, 18 + pulse, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Subtle glow fill
+          ctx.fillStyle = `${themeColor}33`;
+          ctx.beginPath();
+          ctx.arc(tx, ty, 14, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Reticle crosshair ticks
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(tx - 26, ty);
+          ctx.lineTo(tx - 20, ty);
+          ctx.moveTo(tx + 20, ty);
+          ctx.lineTo(tx + 26, ty);
+          ctx.moveTo(tx, ty - 26);
+          ctx.lineTo(tx, ty - 20);
+          ctx.moveTo(tx, ty + 20);
+          ctx.lineTo(tx, ty + 26);
+          ctx.stroke();
+
+          // Tactical Corner brackets
+          const bSize = 22;
+          const cLen = 7;
+          ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2;
+
+          // Top-left
           ctx.beginPath();
-          ctx.arc(tx, ty, 12, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(tx - bSize, ty - bSize + cLen);
+          ctx.lineTo(tx - bSize, ty - bSize);
+          ctx.lineTo(tx - bSize + cLen, ty - bSize);
+          // Top-right
+          ctx.moveTo(tx + bSize - cLen, ty - bSize);
+          ctx.lineTo(tx + bSize, ty - bSize);
+          ctx.lineTo(tx + bSize, ty - bSize + cLen);
+          // Bottom-left
+          ctx.moveTo(tx - bSize, ty + bSize - cLen);
+          ctx.lineTo(tx - bSize, ty + bSize);
+          ctx.lineTo(tx - bSize + cLen, ty + bSize);
+          // Bottom-right
+          ctx.moveTo(tx + bSize - cLen, ty + bSize);
+          ctx.lineTo(tx + bSize, ty + bSize);
+          ctx.lineTo(tx + bSize, ty + bSize - cLen);
           ctx.stroke();
 
-          // YOLO Bounding Box Overlay
-          ctx.strokeStyle = '#34d399';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(tx - 16, ty - 16, 32, 32);
+          // Tactical Badge Label with Exact Target Type and Probability in brackets [98%]
+          const typeLabel =
+            target.type === 'HUMAN'
+              ? 'HUMAN'
+              : target.type === 'ANIMAL'
+              ? 'ANIMAL'
+              : target.type === 'VEHICLE'
+              ? 'VEHICLE'
+              : 'DAMAGED BLDG';
 
-          // YOLO Tag Label
+          const probPercent = Math.min(
+            100,
+            Math.max(92, Math.round((target.confidence || 0.98) * 100))
+          );
+          const label = `${typeLabel} [${probPercent}%]`;
+
+          ctx.font = 'bold 9.5px monospace';
+          const textMetric = ctx.measureText(label);
+          const badgeW = Math.max(86, textMetric.width + 14);
           ctx.fillStyle = '#0e1624';
-          ctx.fillRect(tx - 20, ty - 27, 48, 12);
-          ctx.fillStyle = '#34d399';
-          ctx.font = 'bold 8px monospace';
+          ctx.fillRect(tx - badgeW / 2, ty - bSize - 19, badgeW, 16);
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1.4;
+          ctx.strokeRect(tx - badgeW / 2, ty - bSize - 19, badgeW, 16);
+
+          ctx.fillStyle = '#ffffff';
           ctx.textAlign = 'center';
-          ctx.fillText(`${target.type} ${Math.round(target.confidence * 100)}%`, tx + 4, ty - 18);
-        } else {
-          // Unfound rescue target: Pulsing golden rings
-          const pulse = (Math.sin(time * 0.006) + 1) * 3;
-
-          ctx.fillStyle = '#f5d246';
-          ctx.beginPath();
-          ctx.arc(tx, ty, 5, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.strokeStyle = 'rgba(245, 210, 70, 0.8)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(tx, ty, 10 + pulse, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Crosshairs
-          ctx.strokeStyle = 'rgba(245, 210, 70, 0.6)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(tx - 14, ty);
-          ctx.lineTo(tx + 14, ty);
-          ctx.moveTo(tx, ty - 14);
-          ctx.lineTo(tx, ty + 14);
-          ctx.stroke();
-
-          ctx.fillStyle = '#f5d246';
-          ctx.font = 'bold 9px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(`${target.target_id} (${target.type})`, tx, ty + 18);
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, tx, ty - bSize - 11);
         }
+        // If not found yet: Completely invisible! No markers rendered.
       });
 
-      // Draw Radar Cones around active drones
+      // 11. Draw Radar Cones around active drones
       if (showRadar) {
         Object.values(drones).forEach((drone) => {
           if (!drone.healthy) return;
@@ -369,8 +431,8 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
           const pulseRadius = Math.max(22, 45 + Math.sin(time * 0.007) * 8);
           const isInvestigating = drone.status === 'INVESTIGATING';
 
-          const fillColor = isInvestigating ? 'rgba(245, 210, 70, 0.16)' : 'rgba(80, 210, 130, 0.12)';
-          const strokeColor = isInvestigating ? 'rgba(245, 210, 70, 0.6)' : 'rgba(80, 210, 130, 0.45)';
+          const fillColor = isInvestigating ? 'rgba(56, 189, 248, 0.16)' : 'rgba(80, 210, 130, 0.14)';
+          const strokeColor = isInvestigating ? 'rgba(56, 189, 248, 0.6)' : 'rgba(80, 210, 130, 0.45)';
 
           ctx.fillStyle = fillColor;
           ctx.beginPath();
@@ -385,117 +447,178 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         });
       }
 
-      // Draw Drones
+      // 12. Draw Realistic Rotating Autonomous Recon Drones
       Object.values(drones).forEach((drone) => {
         const isSelected = selectedDroneId === drone.drone_id;
         const cx = drone.x;
         const cy = drone.y;
 
-        let primaryColor = '#5aaaff';
-        if (!drone.healthy || drone.status === 'FAILED') primaryColor = '#eb5a5a';
-        else if (drone.status === 'INVESTIGATING') primaryColor = '#f5d246';
-        else if (drone.status === 'LOW_BATTERY' || drone.status === 'RETURNING') primaryColor = '#eb9646';
+        let primaryColor = '#38bdf8'; // Sky blue reconnaissance livery
+        if (!drone.healthy || drone.status === 'FAILED') primaryColor = '#ef4444';
+        else if (drone.status === 'INVESTIGATING') primaryColor = '#facc15';
+        else if (drone.status === 'LOW_BATTERY' || drone.status === 'RETURNING') primaryColor = '#fb923c';
+        else if (drone.status === 'COMPLETED') primaryColor = '#34d399';
 
-        // Draw IMU Drift Shadow if drift exists (PDF Slide 3)
-        if (drone.healthy && (Math.abs(drone.imu.driftX) > 1.0 || Math.abs(drone.imu.driftY) > 1.0)) {
-          ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([2, 2]);
-          ctx.beginPath();
-          ctx.arc(cx + drone.imu.driftX, cy + drone.imu.driftY, 14, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
+        ctx.save();
+        ctx.translate(cx, cy);
+        // Rotate drone in flight heading direction
+        ctx.rotate(drone.heading + Math.PI / 2);
 
-        // Selection highlight ring
         if (isSelected) {
           ctx.strokeStyle = '#38bdf8';
           ctx.lineWidth = 2;
-          ctx.setLineDash([2, 2]);
+          ctx.setLineDash([3, 3]);
           ctx.beginPath();
-          ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+          ctx.arc(0, 0, 24, 0, Math.PI * 2);
           ctx.stroke();
           ctx.setLineDash([]);
         }
 
-        // Rotor spin animation
-        const rotorAngle = (time * 0.02) % (Math.PI * 2);
-        const rotorOffset = 9;
+        const rotorAngle = (time * 0.035) % (Math.PI * 2);
+        const armLength = 11;
+        const rotorRadius = 5.5;
 
-        // Draw drone arms (X shape)
-        ctx.strokeStyle = primaryColor;
-        ctx.lineWidth = 2.5;
+        // 4 Aerodynamic Carbon Fiber Drone Arms (X-configuration)
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.moveTo(cx - 7, cy - 7);
-        ctx.lineTo(cx + 7, cy + 7);
-        ctx.moveTo(cx + 7, cy - 7);
-        ctx.lineTo(cx - 7, cy + 7);
+        ctx.moveTo(-armLength, -armLength);
+        ctx.lineTo(armLength, armLength);
+        ctx.moveTo(armLength, -armLength);
+        ctx.lineTo(-armLength, armLength);
         ctx.stroke();
 
-        // Rotors
-        if (drone.healthy && drone.status !== 'PAUSED') {
-          const rotorRadius = 4.5;
-          const rotorPositions = [
-            [cx - rotorOffset, cy - rotorOffset],
-            [cx + rotorOffset, cy - rotorOffset],
-            [cx - rotorOffset, cy + rotorOffset],
-            [cx + rotorOffset, cy + rotorOffset],
-          ];
-
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-          ctx.lineWidth = 1;
-
-          rotorPositions.forEach(([rx, ry], idx) => {
-            const angle = rotorAngle * (idx % 2 === 0 ? 1 : -1);
-            ctx.beginPath();
-            ctx.arc(rx, ry, rotorRadius, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.moveTo(rx - Math.cos(angle) * rotorRadius, ry - Math.sin(angle) * rotorRadius);
-            ctx.lineTo(rx + Math.cos(angle) * rotorRadius, ry + Math.sin(angle) * rotorRadius);
-            ctx.stroke();
-          });
-        }
-
-        // Central body circle
-        ctx.fillStyle = primaryColor;
+        ctx.strokeStyle = primaryColor;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+        ctx.moveTo(-armLength, -armLength);
+        ctx.lineTo(armLength, armLength);
+        ctx.moveTo(armLength, -armLength);
+        ctx.lineTo(-armLength, armLength);
+        ctx.stroke();
+
+        // 4 Brushless Motor Pods & Spinning Propellers
+        const motorPositions = [
+          [-armLength, -armLength],
+          [armLength, -armLength],
+          [-armLength, armLength],
+          [armLength, armLength],
+        ];
+
+        motorPositions.forEach(([mx, my], idx) => {
+          // Motor hub
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.arc(mx, my, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = primaryColor;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Spinning Propellers with Motion Blur Ring
+          if (drone.healthy && drone.status !== 'PAUSED') {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(mx, my, rotorRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            const angle = rotorAngle * (idx % 2 === 0 ? 1 : -1);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(mx - Math.cos(angle) * rotorRadius, my - Math.sin(angle) * rotorRadius);
+            ctx.lineTo(mx + Math.cos(angle) * rotorRadius, my + Math.sin(angle) * rotorRadius);
+            ctx.stroke();
+          }
+        });
+
+        // Navigation Strobes: Red on Port (left), Green on Starboard (right), White rear strobe
+        ctx.fillStyle = '#ef4444'; // Red Port LED
+        ctx.beginPath();
+        ctx.arc(-armLength - 1, -armLength, 2, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.2;
+        ctx.fillStyle = '#22c55e'; // Green Starboard LED
         ctx.beginPath();
-        ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+        ctx.arc(armLength + 1, -armLength, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // White rear flashing beacon
+        const rearStrobe = Math.sin(time * 0.015) > 0.5 ? 1 : 0.2;
+        ctx.fillStyle = `rgba(255, 255, 255, ${rearStrobe})`;
+        ctx.beginPath();
+        ctx.arc(0, armLength + 3, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Forward 4K AI Optical Gimbal Camera Pod (pointing forward)
+        ctx.fillStyle = '#0284c7';
+        ctx.beginPath();
+        ctx.arc(0, -9, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(0, -10, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Sleek Central Avionics Body
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = primaryColor;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
         ctx.stroke();
 
-        // Drone ID Label badge
+        ctx.fillStyle = primaryColor;
+        ctx.beginPath();
+        ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        // Drone ID Label Plate (rendered upright, not rotated, for readability)
         ctx.fillStyle = '#0e1624';
         const labelText = drone.drone_id;
         ctx.font = 'bold 10px sans-serif';
         const textWidth = ctx.measureText(labelText).width;
-        ctx.fillRect(cx - textWidth / 2 - 3, cy + 13, textWidth + 6, 12);
+        ctx.fillRect(cx - textWidth / 2 - 4, cy + 14, textWidth + 8, 13);
         ctx.strokeStyle = primaryColor;
         ctx.lineWidth = 1;
-        ctx.strokeRect(cx - textWidth / 2 - 3, cy + 13, textWidth + 6, 12);
+        ctx.strokeRect(cx - textWidth / 2 - 4, cy + 14, textWidth + 8, 13);
 
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(labelText, cx, cy + 19);
+        ctx.fillText(labelText, cx, cy + 20.5);
 
-        // DWA active indicator
-        if (drone.dwaActive) {
-          ctx.fillStyle = '#f59e0b';
-          ctx.font = 'bold 8px sans-serif';
-          ctx.fillText('DWA', cx, cy - 14);
-        } else if (!drone.healthy) {
+        if (!drone.healthy) {
           ctx.fillStyle = '#ef4444';
           ctx.font = 'bold 8px sans-serif';
-          ctx.fillText('FAIL', cx, cy - 14);
+          ctx.fillText('FAIL', cx, cy - 16);
         }
       });
+
+      // 13. Survey Complete Banner directly on Canvas
+      if (missionStatus === 'COMPLETE') {
+        ctx.fillStyle = 'rgba(14, 22, 36, 0.88)';
+        ctx.fillRect(WIDTH / 2 - 180, 20, 360, 48);
+        ctx.strokeStyle = '#34d399';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(WIDTH / 2 - 180, 20, 360, 48);
+
+        ctx.fillStyle = '#34d399';
+        ctx.font = 'bold 14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('AERIAL SURVEY COMPLETED (100%)', WIDTH / 2, 42);
+
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('All Calamity Objectives Identified Directly on Image', WIDTH / 2, 58);
+      }
 
       animationId = requestAnimationFrame(render);
     };
@@ -507,7 +630,6 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
     targets,
     tasks,
     blocked,
-    movingObstacles,
     selectedDroneId,
     hoverCoord,
     showPaths,
@@ -518,6 +640,8 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
     showVoxelGrid,
     environment,
     darknessLevel,
+    missionStatus,
+    gridOverlayOpacity,
   ]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -577,27 +701,51 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   return (
     <div className="flex flex-col bg-[#121823] rounded-xl border border-[#29374d] overflow-hidden shadow-2xl">
       {/* Top Toolbar */}
-      <div className="px-4 py-3 bg-[#182235] border-b border-[#29374d] flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          {/* Environment Switcher */}
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-[#222c3e] rounded-md border border-[#334259] text-xs">
-            <Mountain className="w-3.5 h-3.5 text-sky-400" />
-            <select
-              value={environment}
-              onChange={(e) => onChangeEnvironment(e.target.value as EnvironmentType)}
-              className="bg-transparent text-slate-200 outline-none text-xs font-semibold cursor-pointer"
-            >
-              <option value="SUBTERRANEAN_CAVE" className="bg-[#182235] text-white">
-                Underground Cave / Tunnel (Dark)
-              </option>
-              <option value="GPS_DENIED_FOREST" className="bg-[#182235] text-white">
-                GPS-Denied Disaster Ruins
-              </option>
-              <option value="STANDARD_FACILITY" className="bg-[#182235] text-white">
-                Standard Search Facility
-              </option>
-            </select>
-          </div>
+      <div className="px-4 py-3 bg-[#182235] border-b border-[#29374d] flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Upload / Image Button */}
+          <button
+            onClick={onOpenUploadModal}
+            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-semibold text-xs transition flex items-center gap-1.5 shadow"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>{backgroundImageUrl ? 'Change Satellite/Image' : 'Upload Image / Satellite'}</span>
+          </button>
+
+          {backgroundImageUrl && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#121a28] border border-emerald-500/40 rounded-lg text-xs font-mono text-emerald-400">
+              <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="truncate max-w-[150px]">{backgroundImageName}</span>
+              <button
+                onClick={onClearBackgroundImage}
+                className="hover:text-rose-400 ml-1 p-0.5"
+                title="Remove Image & Reset Grid"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {!backgroundImageUrl && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-[#222c3e] rounded-md border border-[#334259] text-xs">
+              <Mountain className="w-3.5 h-3.5 text-sky-400" />
+              <select
+                value={environment}
+                onChange={(e) => onChangeEnvironment(e.target.value as EnvironmentType)}
+                className="bg-transparent text-slate-200 outline-none text-xs font-semibold cursor-pointer"
+              >
+                <option value="SUBTERRANEAN_CAVE" className="bg-[#182235] text-white">
+                  Underground Cave / Tunnel (Dark)
+                </option>
+                <option value="GPS_DENIED_FOREST" className="bg-[#182235] text-white">
+                  GPS-Denied Disaster Ruins
+                </option>
+                <option value="STANDARD_FACILITY" className="bg-[#182235] text-white">
+                  Standard Facility
+                </option>
+              </select>
+            </div>
+          )}
 
           {hoverCoord && (
             <span className="text-xs font-mono text-slate-400">
@@ -610,7 +758,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         <div className="flex items-center gap-1.5 text-xs flex-wrap">
           <button
             onClick={() => setShowLidarBeams(!showLidarBeams)}
-            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 border ${
+            className={`px-2 py-1 rounded transition-colors flex items-center gap-1 border ${
               showLidarBeams
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                 : 'bg-[#222c3e] text-slate-400 border-[#334259]'
@@ -618,12 +766,12 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             title="Toggle 360 LiDAR Point Cloud laser rays"
           >
             <Sparkles className="w-3 h-3" />
-            LiDAR Cloud
+            LiDAR
           </button>
 
           <button
             onClick={() => setShowMeshLinks(!showMeshLinks)}
-            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 border ${
+            className={`px-2 py-1 rounded transition-colors flex items-center gap-1 border ${
               showMeshLinks
                 ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
                 : 'bg-[#222c3e] text-slate-400 border-[#334259]'
@@ -631,12 +779,12 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             title="Toggle 802.11s Peer Mesh links"
           >
             <Share2 className="w-3 h-3" />
-            Mesh Relays
+            Mesh
           </button>
 
           <button
             onClick={() => setShowPaths(!showPaths)}
-            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 border ${
+            className={`px-2 py-1 rounded transition-colors flex items-center gap-1 border ${
               showPaths
                 ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
                 : 'bg-[#222c3e] text-slate-400 border-[#334259]'
@@ -648,7 +796,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
 
           <button
             onClick={() => setShowRadar(!showRadar)}
-            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1 border ${
+            className={`px-2 py-1 rounded transition-colors flex items-center gap-1 border ${
               showRadar
                 ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
                 : 'bg-[#222c3e] text-slate-400 border-[#334259]'
@@ -664,9 +812,10 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
                 ? 'bg-sky-500/20 text-sky-400 border-sky-500/40'
                 : 'bg-[#222c3e] text-slate-400 border-[#334259]'
             }`}
-            title="Toggle 3D Voxel Occupancy Grid"
+            title="Toggle Grid Lines"
           >
-            Voxels
+            <Layers className="w-3 h-3" />
+            Grid
           </button>
 
           <button
@@ -737,35 +886,43 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
           <div className="absolute bottom-2 left-2 pointer-events-none bg-[#0e1624]/85 backdrop-blur border border-[#2a384e] px-2.5 py-1 rounded text-[11px] text-slate-300 font-mono flex items-center gap-2">
             <span>🖱️ Click drone to inspect</span>
             <span>•</span>
-            <span>Click empty cell to deploy Target</span>
-            <span>•</span>
-            <span className="text-emerald-400">360° LiDAR Active</span>
+            <span>Click to add target</span>
+            {backgroundImageUrl && (
+              <>
+                <span>•</span>
+                <span className="text-emerald-400">Satellite Background Active</span>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       {/* Legend Footer */}
       <div className="px-4 py-2 bg-[#182235] border-t border-[#29374d] flex flex-wrap items-center justify-between text-xs text-slate-300 gap-3">
-        <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-[#5aaaff] inline-block border border-white/60"></span>
-            <span>Recon Drone (Active)</span>
+            <span>Recon Drone</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-[#34d399] inline-block"></span>
-            <span>LiDAR Point Cloud</span>
+            <span>LiDAR Scan</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-[#38bdf8] inline-block border border-white/60"></span>
+            <span>Human [Blue]</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-[#ef4444] inline-block"></span>
-            <span>Dynamic Moving Obstacle (DWA)</span>
+            <span>Animal [Red]</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded-full bg-[#f5d246] inline-block"></span>
-            <span>Target (Human / Rover / Crack)</span>
+            <span className="w-3 h-3 rounded-full bg-[#c084fc] inline-block"></span>
+            <span>Vehicle [Purple]</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-[#222d3d] border border-[#384860] inline-block"></span>
-            <span>Cavern Wall</span>
+            <span className="w-3 h-3 rounded-full bg-[#eab308] inline-block"></span>
+            <span>Damaged Building [Yellow]</span>
           </div>
         </div>
 

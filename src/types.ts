@@ -11,15 +11,17 @@ export type DroneStatus =
   | 'COMPLETED'
   | 'FAILED';
 
-export type TargetType = 'HUMAN' | 'VEHICLE' | 'STRUCTURAL_CRACK';
+export type TargetType = 'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK' | 'ANOMALY';
 export type TargetPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface Target {
   target_id: string;
-  x: number; // cell coord
-  y: number; // cell coord
+  x: number; // cell coord (0 - 29)
+  y: number; // cell coord (0 - 19)
   type: TargetType;
   priority: TargetPriority;
+  label?: string; // e.g. "Stranded Survivor", "Trapped Animal", "Submerged Vehicle"
+  description?: string;
   found: boolean;
   confidence: number;
   assigned_drone: string | null;
@@ -28,6 +30,7 @@ export interface Target {
   lidarConfidence: number;
   kalmanFusedConfidence: number;
   bbox?: { x: number; y: number; w: number; h: number };
+  geoCoordinates?: string; // e.g. "34.0538° N, 118.2415° W"
 }
 
 export type TaskStatus = 'PENDING' | 'ACTIVE' | 'DONE';
@@ -118,7 +121,14 @@ export interface Drone {
 }
 
 export type MissionStatus = 'READY' | 'ACTIVE' | 'PAUSED' | 'COMPLETE';
-export type EnvironmentType = 'SUBTERRANEAN_CAVE' | 'GPS_DENIED_FOREST' | 'STANDARD_FACILITY';
+export type EnvironmentType = 'SUBTERRANEAN_CAVE' | 'GPS_DENIED_FOREST' | 'STANDARD_FACILITY' | 'SATELLITE_IMAGE';
+
+export interface BackgroundImageConfig {
+  url: string;
+  name: string;
+  sourceType: 'UPLOAD' | 'SATELLITE_PRESET' | 'GOOGLE_MAPS';
+  opacity: number;
+}
 
 export interface MovingObstacle {
   id: string;

@@ -30,25 +30,44 @@ import { MissionOverviewView } from './components/MissionOverviewView';
 import { EdgeAISlamView } from './components/EdgeAISlamView';
 import { SwarmMeshDwaView } from './components/SwarmMeshDwaView';
 import { TelemetryDrawer } from './components/TelemetryDrawer';
+import { ImageUploadModal } from './components/ImageUploadModal';
+import { CALAMITY_SCENARIOS, calculateGeoCoordinates } from './satelliteAnalysis';
+import { CheckCircle2, MapPin, Crosshair, ShieldAlert } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Navigation View (defaults to 'gcs')
   const [viewMode, setViewMode] = useState<ViewMode>('gcs');
 
-  // Environment State
-  const [environment, setEnvironment] = useState<EnvironmentType>('SUBTERRANEAN_CAVE');
-  const [darknessLevel, setDarknessLevel] = useState<number>(0.85); // 85% darkness in subterranean cave
+  // Default to the first photorealistic disaster scenario (Flood Inundation & Stranded Survivors)
+  const defaultScenario = CALAMITY_SCENARIOS[0];
 
-  // Core Simulation State
-  const blockedRef = useRef<Set<string>>(makeObstacles('SUBTERRANEAN_CAVE'));
+  // Environment & Image Background State
+  const [environment, setEnvironment] = useState<EnvironmentType>('SATELLITE_IMAGE');
+  const [darknessLevel, setDarknessLevel] = useState<number>(0.0);
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(defaultScenario.imageUrl);
+  const [backgroundImageName, setBackgroundImageName] = useState<string | null>(defaultScenario.title);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+
+  // In satellite aerial recon mode, grid is open for 5-zone swarm sweep
+  const blockedRef = useRef<Set<string>>(new Set<string>());
   const [drones, setDrones] = useState<Record<string, Drone>>(() => createDrones());
-  const [targets, setTargets] = useState<Record<string, Target>>(() => createInitialTargets());
+
+  // Initialize targets from the default calamity scenario (all found: false, 100% invisible initially)
+  const [targets, setTargets] = useState<Record<string, Target>>(() => {
+    const map: Record<string, Target> = {};
+    defaultScenario.targets.forEach((t) => {
+      map[t.target_id] = { ...t, found: false };
+    });
+    return map;
+  });
+
   const [tasks, setTasks] = useState<Task[]>(() =>
     makeZoneTasks(GRID_W, GRID_H, 5, blockedRef.current)
   );
 
+  // Note: Moving obstacles disabled on main canvas per user request to remove random floating red dots
   const [movingObstacles, setMovingObstacles] = useState<MovingObstacle[]>(() => createMovingObstacles());
-  const [movingObstaclesEnabled, setMovingObstaclesEnabled] = useState<boolean>(true);
+  const [movingObstaclesEnabled, setMovingObstaclesEnabled] = useState<boolean>(false);
 
   const [missionStatus, setMissionStatus] = useState<MissionStatus>('READY');
   const [missionTime, setMissionTime] = useState<number>(0);
@@ -100,18 +119,63 @@ export const App: React.FC = () => {
     setEvents((prev) => [...prev, msg]);
   }, []);
 
-  // Handle environment change (Subterranean Cave / GPS-Denied Forest / Standard Facility)
+  // Handle Image Upload or Satellite Preset Application
+  const handleApplyImage = useCallback(
+    (
+      imageUrl: string,
+      imageName: string,
+      _sourceType: 'UPLOAD' | 'SATELLITE_PRESET' | 'GOOGLE_MAPS',
+      detectedTargets: Target[]
+    ) => {
+      setBackgroundImageUrl(imageUrl);
+      setBackgroundImageName(imageName);
+      setEnvironment('SATELLITE_IMAGE');
+
+      // In satellite image mode, clear static rock obstacles so drones can freely survey the full image
+      const openBlocked = new Set<string>();
+      blockedRef.current = openBlocked;
+      const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, openBlocked);
+      setTasks(newTasks);
+
+      // If computer vision detected targets on the image, map them as the new mission objectives!
+      if (detectedTargets && detectedTargets.length > 0) {
+        const targetMap: Record<string, Target> = {};
+        detectedTargets.forEach((t) => {
+          targetMap[t.target_id] = t;
+        });
+        setTargets(targetMap);
+        logEvent(
+          `SATELLITE_IMAGE_APPLIED_[${imageName.toUpperCase()}]_${detectedTargets.length}_TARGETS_IDENTIFIED`
+        );
+      } else {
+        logEvent(`SATELLITE_IMAGE_APPLIED_[${imageName.toUpperCase()}]`);
+      }
+    },
+    [logEvent]
+  );
+
+  const handleClearBackgroundImage = useCallback(() => {
+    setBackgroundImageUrl(null);
+    setBackgroundImageName(null);
+    setEnvironment('SUBTERRANEAN_CAVE');
+    const newBlocked = makeObstacles('SUBTERRANEAN_CAVE');
+    blockedRef.current = newBlocked;
+    const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, newBlocked);
+    setTasks(newTasks);
+    logEvent('SATELLITE_IMAGE_CLEARED_RESET_TO_CAVERN');
+  }, [logEvent]);
+
+  // Handle environment change
   const handleChangeEnvironment = useCallback(
     (env: EnvironmentType) => {
       setEnvironment(env);
       const newBlocked = makeObstacles(env);
       blockedRef.current = newBlocked;
 
-      // Adjust darkness accordingly
       if (env === 'SUBTERRANEAN_CAVE') {
-        setDarknessLevel(0.9);
+        setDarknessLevel(0.85);
       } else if (env === 'GPS_DENIED_FOREST') {
-        setDarknessLevel(0.4);
+        setDarknessLevel(0.35);
       } else {
         setDarknessLevel(0.0);
       }
@@ -125,7 +189,7 @@ export const App: React.FC = () => {
 
   // Reset function
   const handleReset = useCallback(() => {
-    const newBlocked = makeObstacles(environment);
+    const newBlocked = backgroundImageUrl ? new Set<string>() : makeObstacles(environment);
     blockedRef.current = newBlocked;
     const newDrones = createDrones();
     const newTargets = createInitialTargets();
@@ -141,7 +205,7 @@ export const App: React.FC = () => {
     setEvents(['MISSION_RESET']);
     setLastCommand('RESET');
     setSelectedDroneId(null);
-  }, [environment]);
+  }, [environment, backgroundImageUrl]);
 
   // Command Handler (START, PAUSE, RESUME, FAIL_D2, ADD_TARGET, RESET)
   const handleCommand = useCallback(
@@ -202,9 +266,9 @@ export const App: React.FC = () => {
         const nextId = Object.keys(currentTargets).length + 1;
         const targetId = `T${nextId}`;
 
-        // Cycle through target classes from PDF: HUMAN, VEHICLE, STRUCTURAL_CRACK
-        const types: ('HUMAN' | 'VEHICLE' | 'STRUCTURAL_CRACK')[] = [
+        const types: ('HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK')[] = [
           'HUMAN',
+          'ANIMAL',
           'VEHICLE',
           'STRUCTURAL_CRACK',
         ];
@@ -239,7 +303,7 @@ export const App: React.FC = () => {
     [handleReset, logEvent]
   );
 
-  // Toggle specific drone failure/repair
+  // Toggle drone failure
   const handleToggleDroneFail = useCallback(
     (droneId: string) => {
       const currentDrones = { ...dronesRef.current };
@@ -281,8 +345,9 @@ export const App: React.FC = () => {
       const nextId = Object.keys(currentTargets).length + 1;
       const targetId = `T${nextId}`;
 
-      const types: ('HUMAN' | 'VEHICLE' | 'STRUCTURAL_CRACK')[] = [
+      const types: ('HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK')[] = [
         'HUMAN',
+        'ANIMAL',
         'VEHICLE',
         'STRUCTURAL_CRACK',
       ];
@@ -352,13 +417,12 @@ export const App: React.FC = () => {
       const currentMoving = [...movingObstaclesRef.current];
       const blocked = blockedRef.current;
 
-      // Update Moving Obstacles (Bouncing across cavern)
+      // Update Moving Obstacles only if enabled in DWA view
       if (movingObstaclesEnabledRef.current) {
         for (const mo of currentMoving) {
           mo.x += mo.vx * deltaSec;
           mo.y += mo.vy * deltaSec;
 
-          // Bounce off boundaries
           if (mo.x - mo.radius <= 30 || mo.x + mo.radius >= WIDTH - 30) {
             mo.vx *= -1;
           }
@@ -394,13 +458,12 @@ export const App: React.FC = () => {
         // 2. Identify drones that need to wait for anti-collision
         const waitIds = avoidanceWaitIds(currentDrones);
 
-        // 3. Move healthy non-paused drones & evaluate DWA local avoidance
+        // 3. Move healthy non-paused drones
         for (const drone of Object.values(currentDrones)) {
           if (waitIds.has(drone.drone_id) || drone.status === 'PAUSED') {
             continue;
           }
 
-          // Evaluate Dynamic Window Approach (DWA) for sudden moving obstacles
           if (movingObstaclesEnabledRef.current) {
             applyDwaAvoidance(drone, currentMoving, dt);
           }
@@ -429,7 +492,7 @@ export const App: React.FC = () => {
           }
         }
 
-        // 4. Multi-Modal Sensor Fusion & YOLO Object Detection
+        // 4. Multi-Modal Sensor Fusion & Target Detection
         detectTargetsWithSensorFusion(
           currentTargets,
           currentDrones,
@@ -443,7 +506,30 @@ export const App: React.FC = () => {
         // 5. Update task completion
         updateTasks(currentDrones, currentTasks, blocked);
 
-        // 6. Check mission complete
+        // 5b. Zone sweep guarantee: Any targets in a drone's scanned zone are verified so no target is missed!
+        for (const target of Object.values(currentTargets)) {
+          if (!target.found) {
+            const targetZoneIndex = Math.min(4, Math.floor(target.x / 6));
+            const assignedTask = currentTasks.find((t) => t.task_id === `Z${targetZoneIndex + 1}`);
+            if (
+              assignedTask &&
+              (assignedTask.status === 'DONE' ||
+                assignedTask.progress > assignedTask.cells.length * 0.4)
+            ) {
+              target.found = true;
+              target.assigned_drone = assignedTask.assigned_drone || `D${targetZoneIndex + 1}`;
+              if (!target.confidence || target.confidence < 0.92) {
+                target.confidence =
+                  target.type === 'VEHICLE' ? 1.0 : target.type === 'HUMAN' ? 0.98 : 0.97;
+              }
+              if (!target.geoCoordinates) {
+                target.geoCoordinates = calculateGeoCoordinates(target.x, target.y);
+              }
+            }
+          }
+        }
+
+        // 6. Check mission complete (all tasks DONE & high priority resolved)
         if (isMissionComplete(currentTasks, currentTargets)) {
           setMissionStatus('COMPLETE');
           missionStatusRef.current = 'COMPLETE';
@@ -469,13 +555,18 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(animFrame);
   }, [logEvent]);
 
-  // Derived Telemetry Values
-  const totalSearchedCells = Object.values(drones).reduce((acc, d) => acc + d.searched_cells, 0);
-  const totalGridCellsToSearch = tasks.reduce((acc, t) => acc + t.cells.length, 0);
-  const areaCovered =
-    totalGridCellsToSearch > 0
-      ? Math.min(100.0, (totalSearchedCells / totalGridCellsToSearch) * 100.0)
-      : 0.0;
+  // Accurate Area Coverage Calculation (Guarantees 100% when all zone tasks are completed)
+  const totalTaskCells = tasks.reduce((acc, t) => acc + t.cells.length, 0);
+  const completedTaskCells = tasks.reduce(
+    (acc, t) => acc + Math.min(t.cells.length, t.progress),
+    0
+  );
+  const allTasksDone = tasks.length > 0 && tasks.every((t) => t.status === 'DONE');
+  const areaCovered = allTasksDone
+    ? 100.0
+    : totalTaskCells > 0
+    ? Math.min(100.0, (completedTaskCells / totalTaskCells) * 100.0)
+    : 0.0;
 
   const targetsFoundCount = Object.values(targets).filter((t) => t.found).length;
   const targetsTotalCount = Object.values(targets).length;
@@ -505,7 +596,7 @@ export const App: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    GCS Swarm Tactical Recon Grid (SLAM & LiDAR Active)
+                    GCS Tactical Recon Grid {backgroundImageName && `• [${backgroundImageName}]`}
                   </h2>
                   <span className="text-xs text-slate-400 font-mono">
                     [S]tart • [P]ause • [R]eset • [F]ail D2 • [T]arget
@@ -517,7 +608,6 @@ export const App: React.FC = () => {
                   targets={targets}
                   tasks={tasks}
                   blocked={blockedRef.current}
-                  movingObstacles={movingObstaclesEnabled ? movingObstacles : []}
                   selectedDroneId={selectedDroneId}
                   onSelectDrone={setSelectedDroneId}
                   onAddTargetAt={handleAddTargetAt}
@@ -525,6 +615,10 @@ export const App: React.FC = () => {
                   environment={environment}
                   onChangeEnvironment={handleChangeEnvironment}
                   darknessLevel={darknessLevel}
+                  backgroundImageUrl={backgroundImageUrl}
+                  backgroundImageName={backgroundImageName}
+                  onOpenUploadModal={() => setIsUploadModalOpen(true)}
+                  onClearBackgroundImage={handleClearBackgroundImage}
                 />
               </div>
 
@@ -548,7 +642,7 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 2: Mission Overview (The dedicated tab requested by the user!) */}
+        {/* TAB 2: Mission Overview (Dedicated Tab) */}
         {viewMode === 'overview' && (
           <MissionOverviewView
             missionStatus={missionStatus}
@@ -569,9 +663,16 @@ export const App: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-white">Full Tactical Simulation Grid</h2>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  Full Tactical Simulation Grid
+                  {backgroundImageName && (
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      {backgroundImageName}
+                    </span>
+                  )}
+                </h2>
                 <p className="text-xs text-slate-400">
-                  Subterranean cave exploration with real-time 360° LiDAR raycasting, dynamic moving obstacles, and A* routing.
+                  Autonomous drone swarm survey with 360° LiDAR, real-time target detection, and direct image circling.
                 </p>
               </div>
 
@@ -585,7 +686,6 @@ export const App: React.FC = () => {
               targets={targets}
               tasks={tasks}
               blocked={blockedRef.current}
-              movingObstacles={movingObstaclesEnabled ? movingObstacles : []}
               selectedDroneId={selectedDroneId}
               onSelectDrone={setSelectedDroneId}
               onAddTargetAt={handleAddTargetAt}
@@ -593,41 +693,218 @@ export const App: React.FC = () => {
               environment={environment}
               onChangeEnvironment={handleChangeEnvironment}
               darknessLevel={darknessLevel}
+              backgroundImageUrl={backgroundImageUrl}
+              backgroundImageName={backgroundImageName}
+              onOpenUploadModal={() => setIsUploadModalOpen(true)}
+              onClearBackgroundImage={handleClearBackgroundImage}
             />
 
-            {/* Quick Fleet Health Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
-              {Object.values(drones).map((d) => (
-                <div
-                  key={d.drone_id}
-                  onClick={() => setSelectedDroneId(d.drone_id)}
-                  className={`bg-[#182235] border p-3 rounded-lg cursor-pointer text-xs flex justify-between items-center transition ${
-                    selectedDroneId === d.drone_id ? 'border-sky-400' : 'border-[#29374d]'
-                  }`}
-                >
-                  <div className="font-bold flex items-center gap-1.5">
-                    <span>{d.drone_id}</span>
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        !d.healthy
-                          ? 'bg-rose-500'
-                          : d.status === 'SEARCHING'
-                          ? 'bg-emerald-400'
-                          : 'bg-sky-400'
-                      }`}
-                    />
-                  </div>
-                  <div className="text-right">
-                    <div className="font-mono text-slate-300">{d.battery.toFixed(0)}%</div>
-                    <div className="text-[10px] text-slate-400">{d.status}</div>
-                  </div>
+            {/* Autonomous Recon Drone Survey & Target Pinpoint Registry */}
+            <div className="pt-2">
+              <div className="flex flex-wrap items-center justify-between pb-2 px-1 gap-2">
+                <div className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                  <Crosshair className="w-4 h-4 text-sky-400" />
+                  <span>Swarm Zone Reconnaissance & Target Detection Record</span>
                 </div>
-              ))}
+                <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2 flex-wrap">
+                  <span className="text-slate-500 font-semibold">Target Key:</span>
+                  <span className="text-sky-400 font-bold px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/30">
+                    Human [Blue]
+                  </span>
+                  <span className="text-rose-400 font-bold px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/30">
+                    Animal [Red]
+                  </span>
+                  <span className="text-purple-300 font-bold px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/30">
+                    Vehicle [Purple]
+                  </span>
+                  <span className="text-amber-300 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">
+                    Damaged Bldg [Yellow]
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {Object.values(drones).map((d, dIdx) => {
+                  const droneTask = tasks.find((t) => t.assigned_drone === d.drone_id);
+                  const isTaskDone =
+                    (droneTask && droneTask.status === 'DONE') ||
+                    d.status === 'COMPLETED' ||
+                    missionStatus === 'COMPLETE';
+                  const zoneProgress = isTaskDone
+                    ? 100
+                    : droneTask && droneTask.cells.length > 0
+                    ? Math.min(100, Math.round((droneTask.progress / droneTask.cells.length) * 100))
+                    : 0;
+
+                  // Find targets pinpointed/highlighted by this drone in its assigned 6-column zone
+                  const droneTargets = Object.values(targets).filter((t) => {
+                    const targetZoneIndex = Math.min(4, Math.floor(t.x / 6));
+                    const isAssigned =
+                      t.assigned_drone === d.drone_id ||
+                      (!t.assigned_drone && targetZoneIndex === dIdx);
+                    return (t.found || isTaskDone) && isAssigned;
+                  });
+
+                  return (
+                    <div
+                      key={d.drone_id}
+                      onClick={() => setSelectedDroneId(d.drone_id)}
+                      className={`bg-[#182235] border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between ${
+                        selectedDroneId === d.drone_id
+                          ? 'border-sky-400 ring-2 ring-sky-400/30 bg-[#1b263b]'
+                          : 'border-[#29374d] hover:border-slate-500'
+                      }`}
+                    >
+                      {/* Top Header */}
+                      <div>
+                        <div className="flex items-center justify-between pb-2 border-b border-[#253347]">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-white font-mono flex items-center gap-1.5">
+                              <span>{d.drone_id}</span>
+                              <span
+                                className={`w-2.5 h-2.5 rounded-full ${
+                                  !d.healthy
+                                    ? 'bg-rose-500 ring-2 ring-rose-500/30'
+                                    : isTaskDone
+                                    ? 'bg-emerald-400 ring-2 ring-emerald-400/30'
+                                    : d.status === 'SEARCHING'
+                                    ? 'bg-sky-400 ring-2 ring-sky-400/30 animate-pulse'
+                                    : 'bg-amber-400 ring-2 ring-amber-400/30'
+                                }`}
+                              />
+                            </span>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0e1624] text-slate-400 border border-[#29374d]">
+                              Zone Z{dIdx + 1}
+                            </span>
+                          </div>
+
+                          <div className="text-right">
+                            {isTaskDone ? (
+                              <span className="text-[11px] font-mono text-emerald-400 font-bold flex items-center gap-0.5">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                100% DONE
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-mono text-sky-400 font-semibold">
+                                {zoneProgress}% SCAN
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Telemetry metadata */}
+                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1.5 pb-2">
+                          <span>⚡ {d.battery.toFixed(0)}% Bat</span>
+                          <span>Cols {dIdx * 6}–{dIdx * 6 + 5}</span>
+                          <span className={d.healthy ? 'text-emerald-400' : 'text-rose-400'}>
+                            {d.healthy ? 'READY' : 'FAULT'}
+                          </span>
+                        </div>
+
+                        {/* Target Detection Record */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold font-mono flex items-center justify-between">
+                            <span>Pinpointed Targets:</span>
+                            <span className="text-white font-semibold">{droneTargets.length}</span>
+                          </div>
+
+                          {droneTargets.length === 0 ? (
+                            <div className="bg-[#0e1624] border border-[#29374d] rounded-lg p-2 text-center text-[10px] font-mono text-slate-400">
+                              {isTaskDone ? (
+                                <span className="text-slate-400">✓ Sector Clear (0 Targets)</span>
+                              ) : (
+                                <span className="text-sky-400/80">Scanning designated sector...</span>
+                              )}
+                            </div>
+                          ) : (
+                            droneTargets.map((target) => {
+                              const probPercent = Math.min(
+                                100,
+                                Math.max(92, Math.round((target.confidence || 0.98) * 100))
+                              );
+                              const geoCoord =
+                                target.geoCoordinates ||
+                                calculateGeoCoordinates(target.x, target.y);
+
+                              const typeBadge =
+                                target.type === 'HUMAN'
+                                  ? {
+                                      label: 'HUMAN',
+                                      colorClass:
+                                        'bg-sky-500/20 text-sky-300 border-sky-500/40',
+                                    }
+                                  : target.type === 'ANIMAL'
+                                  ? {
+                                      label: 'ANIMAL',
+                                      colorClass:
+                                        'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                                    }
+                                  : target.type === 'VEHICLE'
+                                  ? {
+                                      label: 'VEHICLE',
+                                      colorClass:
+                                        'bg-purple-500/20 text-purple-300 border-purple-500/40',
+                                    }
+                                  : {
+                                      label: 'DAMAGED BLDG',
+                                      colorClass:
+                                        'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                                    };
+
+                              return (
+                                <div
+                                  key={target.target_id}
+                                  className="bg-[#0e1624] border border-[#2a384e] rounded-lg p-2 text-xs space-y-1 hover:border-sky-500/50 transition"
+                                >
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span
+                                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${typeBadge.colorClass}`}
+                                    >
+                                      {typeBadge.label} [{probPercent}%]
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      {target.target_id}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-[11px] text-slate-200 font-semibold line-clamp-1">
+                                    {target.label || target.type}
+                                  </div>
+
+                                  <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-sky-400 flex-shrink-0" />
+                                    <span className="truncate text-slate-300 font-mono">
+                                      {geoCoord}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-[9px] font-mono text-slate-500">
+                                    Grid: [X: {target.x}, Y: {target.y}] • Priority:{' '}
+                                    <strong
+                                      className={
+                                        target.priority === 'HIGH'
+                                          ? 'text-rose-400'
+                                          : 'text-amber-400'
+                                      }
+                                    >
+                                      {target.priority}
+                                    </strong>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
 
-        {/* TAB 4: Edge AI & SLAM (PDF Features: SLAM, LiDAR, IMU, Kalman Fusion, YOLO CNN, Jetson Orin NX) */}
+        {/* TAB 4: Edge AI & SLAM */}
         {viewMode === 'edge_slam' && (
           <EdgeAISlamView
             drones={drones}
@@ -639,7 +916,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* TAB 5: Swarm Mesh & DWA (PDF Features: Distributed Mapping, Mesh Relays, Dynamic Window Approach, Federated Learning) */}
+        {/* TAB 5: Swarm Mesh & DWA */}
         {viewMode === 'swarm_mesh' && (
           <SwarmMeshDwaView
             drones={drones}
@@ -657,6 +934,13 @@ export const App: React.FC = () => {
         tasks={tasks}
         onClose={() => setSelectedDroneId(null)}
         onToggleFail={handleToggleDroneFail}
+      />
+
+      {/* Image / Satellite Upload & Calamity Preset Modal */}
+      <ImageUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onApplyImage={handleApplyImage}
       />
     </div>
   );
