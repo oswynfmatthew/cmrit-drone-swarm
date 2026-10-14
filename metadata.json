@@ -1,0 +1,8 @@
+{
+  "name": "CMRIT Drone Swarm Command Center",
+  "description": "Autonomous search and rescue drone swarm simulation and ground control dashboard with A* pathfinding, zone allocation, and real-time fleet telemetry.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
