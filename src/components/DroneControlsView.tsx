@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Drone, Target, MissionStatus } from '../types';
+import { Drone, Target, MissionStatus, TargetType } from '../types';
 import {
   Play,
   Pause,
@@ -27,7 +27,7 @@ interface DroneControlsViewProps {
   onAddTargetWithType: (
     cellX: number,
     cellY: number,
-    type: 'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK',
+    type: TargetType,
     initialConfidence?: number
   ) => void;
   onDeleteTarget: (targetId: string) => void;
@@ -46,9 +46,7 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
   onDeleteTarget,
 }) => {
   const [isFailDropdownOpen, setIsFailDropdownOpen] = useState(false);
-  const [selectedTargetType, setSelectedTargetType] = useState<
-    'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK'
-  >('HUMAN');
+  const [selectedTargetType, setSelectedTargetType] = useState<TargetType>('HUMAN');
   const [customX, setCustomX] = useState<number>(15);
   const [customY, setCustomY] = useState<number>(10);
 
@@ -321,8 +319,9 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
                   {/* Status Banner */}
                   <div className="pt-2 pb-1">
                     {isFailed ? (
-                      <div className="bg-rose-600/30 border border-rose-500 text-rose-300 font-mono font-bold text-[10px] px-2 py-1 rounded text-center">
-                        🚨 FAILED / HALTED
+                      <div className="bg-rose-900/80 border border-rose-500/80 text-rose-200 font-mono font-bold text-[10px] px-2 py-1 rounded text-center flex items-center justify-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-rose-400" />
+                        <span>CRITICAL FAULT (FAILED)</span>
                       </div>
                     ) : (
                       <div className="bg-[#0e1624] border border-[#29374d] text-slate-300 font-mono text-[10px] px-2 py-1 rounded text-center flex items-center justify-between">
@@ -386,7 +385,7 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
             1. Select Precise Target Classification:
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             <button
               onClick={() => setSelectedTargetType('HUMAN')}
               className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
@@ -396,19 +395,7 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
               }`}
             >
               <span className="w-3 h-3 rounded-full bg-sky-400"></span>
-              <span>Human Survivor (Blue)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTargetType('ANIMAL')}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'ANIMAL'
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-400 ring-2 ring-rose-400/30'
-                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-rose-500"></span>
-              <span>Animal / Livestock (Red)</span>
+              <span>Human (Blue)</span>
             </button>
 
             <button
@@ -420,19 +407,43 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
               }`}
             >
               <span className="w-3 h-3 rounded-full bg-purple-400"></span>
-              <span>Vehicle / Asset (Purple)</span>
+              <span>Vehicle (Purple)</span>
             </button>
 
             <button
-              onClick={() => setSelectedTargetType('STRUCTURAL_CRACK')}
+              onClick={() => setSelectedTargetType('BUILDING')}
               className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'STRUCTURAL_CRACK'
+                selectedTargetType === 'BUILDING' || selectedTargetType === 'STRUCTURAL_CRACK'
                   ? 'bg-amber-500/20 text-amber-300 border-amber-400 ring-2 ring-amber-400/30'
                   : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
               }`}
             >
               <span className="w-3 h-3 rounded-full bg-amber-400"></span>
-              <span>Damaged Bldg (Yellow)</span>
+              <span>Building (Orange)</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedTargetType('PLANT')}
+              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
+                selectedTargetType === 'PLANT'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400 ring-2 ring-emerald-400/30'
+                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
+              }`}
+            >
+              <span className="w-3 h-3 rounded-full bg-emerald-400"></span>
+              <span>Plant (Green)</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedTargetType('ANIMAL')}
+              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
+                selectedTargetType === 'ANIMAL'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-400 ring-2 ring-rose-400/30'
+                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
+              }`}
+            >
+              <span className="w-3 h-3 rounded-full bg-rose-500"></span>
+              <span>Animal (Red)</span>
             </button>
           </div>
 

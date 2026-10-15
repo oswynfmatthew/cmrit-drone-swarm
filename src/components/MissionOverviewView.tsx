@@ -1,5 +1,5 @@
-import React from 'react';
-import { Target, MissionStatus, Drone } from '../types';
+import React, { useState } from 'react';
+import { Target, MissionStatus, Drone, TargetType, TargetPriority } from '../types';
 import {
   Activity,
   Clock,
@@ -11,6 +11,11 @@ import {
   Trash2,
   MapPin,
   AlertTriangle,
+  PlusCircle,
+  Edit2,
+  Check,
+  X,
+  Target as TargetIcon,
 } from 'lucide-react';
 import { calculateGeoCoordinates } from '../satelliteAnalysis';
 
@@ -26,6 +31,15 @@ interface MissionOverviewViewProps {
   lastCommand: string;
   onSendCommand: (cmd: string) => void;
   onDeleteTarget?: (targetId: string) => void;
+  onAddTargetWithType?: (
+    cellX: number,
+    cellY: number,
+    type: TargetType,
+    initialConfidence?: number,
+    label?: string,
+    priority?: TargetPriority
+  ) => void;
+  onUpdateTarget?: (targetId: string, updates: Partial<Target>) => void;
 }
 
 export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
@@ -40,27 +54,120 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
   lastCommand,
   onSendCommand,
   onDeleteTarget,
+  onAddTargetWithType,
+  onUpdateTarget,
 }) => {
-  const getStatusSymbol = (status: string) => {
+  // Custom Target Form State
+  const [editingTargetId, setEditingTargetId] = useState<string | null>(null);
+  const [formType, setFormType] = useState<TargetType>('HUMAN');
+  const [formPriority, setFormPriority] = useState<TargetPriority>('HIGH');
+  const [formX, setFormX] = useState<number>(15);
+  const [formY, setFormY] = useState<number>(10);
+  const [formLabel, setFormLabel] = useState<string>('');
+  const [formDescription, setFormDescription] = useState<string>('');
+  const [filterType, setFilterType] = useState<string>('ALL');
+
+  const handleEditClick = (target: Target) => {
+    setEditingTargetId(target.target_id);
+    setFormType(target.type);
+    setFormPriority(target.priority);
+    setFormX(target.x);
+    setFormY(target.y);
+    setFormLabel(target.label || '');
+    setFormDescription(target.description || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTargetId(null);
+    setFormLabel('');
+    setFormDescription('');
+  };
+
+  const handleSaveTarget = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingTargetId) {
+      onUpdateTarget?.(editingTargetId, {
+        type: formType,
+        priority: formPriority,
+        x: formX,
+        y: formY,
+        label: formLabel || `${formType} Target`,
+        description: formDescription,
+      });
+      setEditingTargetId(null);
+    } else {
+      const conf =
+        formType === 'VEHICLE'
+          ? 1.0
+          : formType === 'HUMAN'
+          ? 0.98
+          : formType === 'ANIMAL'
+          ? 0.97
+          : 0.96;
+      onAddTargetWithType?.(
+        formX,
+        formY,
+        formType,
+        conf,
+        formLabel || `${formType} Recon Target`,
+        formPriority
+      );
+    }
+    setFormLabel('');
+    setFormDescription('');
+  };
+
+  const renderStatusBadge = (status: string) => {
     switch (status.toUpperCase()) {
       case 'ACTIVE':
       case 'SEARCHING':
       case 'INVESTIGATING':
-        return '🟢';
+        return (
+          <span className="flex items-center gap-1.5 text-emerald-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>ACTIVE</span>
+          </span>
+        );
       case 'FAILED':
       case 'LOW_BATTERY':
-        return '🔴';
+        return (
+          <span className="flex items-center gap-1.5 text-rose-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+            <span>FAULT</span>
+          </span>
+        );
       case 'PAUSED':
       case 'RETURNING':
       case 'AVOIDING':
-        return '🟡';
+        return (
+          <span className="flex items-center gap-1.5 text-amber-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+            <span>{status.toUpperCase()}</span>
+          </span>
+        );
       case 'COMPLETED':
       case 'COMPLETE':
-        return '🔵';
+        return (
+          <span className="flex items-center gap-1.5 text-sky-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+            <span>COMPLETE</span>
+          </span>
+        );
       default:
-        return '⚪';
+        return (
+          <span className="flex items-center gap-1.5 text-slate-300">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+            <span>READY</span>
+          </span>
+        );
     }
   };
+
+  const allTargetsList = Object.values(targets);
+  const filteredTargets =
+    filterType === 'ALL'
+      ? allTargetsList
+      : allTargetsList.filter((t) => t.type === filterType);
 
   return (
     <div className="space-y-6">
@@ -72,7 +179,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
             Autonomous Recon Mission Overview
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Comprehensive telemetry, area coverage statistics, classified target dossiers, and command event logs.
+            Comprehensive telemetry, area coverage statistics, classified target dossiers, and ground control dispatch feed.
           </p>
         </div>
 
@@ -99,9 +206,8 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
             <span>MISSION STATUS</span>
             <span className="text-slate-400 text-[10px]">GCS ENGINE</span>
           </div>
-          <div className="text-2xl font-bold text-white flex items-center gap-2.5 mt-2">
-            <span>{getStatusSymbol(missionStatus)}</span>
-            <span>{missionStatus}</span>
+          <div className="text-2xl font-bold text-white mt-2">
+            {renderStatusBadge(missionStatus)}
           </div>
           <div className="text-[11px] text-slate-400 mt-2">
             {missionStatus === 'ACTIVE'
@@ -140,7 +246,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
             <span className="text-amber-400 text-[10px] font-mono">YOLO + EKF</span>
           </div>
           <div className="text-2xl font-bold text-amber-400 mt-2 flex items-center gap-2">
-            <span>🎯</span>
+            <Crosshair className="w-6 h-6 text-amber-400" />
             <span>
               {targetsFound} / {targetsTotal}
             </span>
@@ -212,12 +318,12 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                 </div>
 
                 {isFailed ? (
-                  <div className="bg-rose-600 border border-rose-400 text-white font-mono font-bold text-[10px] px-2 py-1 rounded text-center tracking-wide shadow animate-pulse">
-                    🚨 FAILED (MOTOR FAULT)
+                  <div className="bg-rose-900/80 border border-rose-500/80 text-rose-200 font-mono font-bold text-[10px] px-2 py-1 rounded text-center tracking-wide shadow">
+                    CRITICAL FAULT (FAILED)
                   </div>
                 ) : (
                   <div className="bg-[#0e1624] border border-[#29374d] text-emerald-400 font-mono font-semibold text-[10px] px-2 py-1 rounded text-center">
-                    ✓ OPERATIONAL ({drone.status})
+                    ONLINE ({drone.status})
                   </div>
                 )}
 
@@ -261,7 +367,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
           {Object.values(targets).map((target) => {
             const prob = Math.min(
               100,
-              Math.max(92, Math.round((target.confidence || 0.98) * 100))
+              Math.max(88, Math.round((target.confidence || 0.98) * 100))
             );
             const geoCoord =
               target.geoCoordinates || calculateGeoCoordinates(target.x, target.y);
@@ -278,15 +384,17 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-base text-white flex items-center gap-2">
-                      🎯 {target.target_id}
+                      <span className="font-mono text-sky-400">{target.target_id}</span>
                       <span
                         className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
                           target.type === 'HUMAN'
                             ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                            : target.type === 'ANIMAL'
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                             : target.type === 'VEHICLE'
                             ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                            : target.type === 'ANIMAL'
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                            : target.type === 'PLANT'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                             : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                         }`}
                       >
@@ -295,13 +403,13 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                     </span>
 
                     <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
                         target.found
                           ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                           : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       }`}
                     >
-                      {target.found ? '🟢 FOUND' : '🟡 SEARCHING'}
+                      {target.found ? 'FOUND' : 'SEARCHING'}
                     </span>
                   </div>
 
@@ -320,14 +428,27 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                         {target.assigned_drone || 'Scanning'}
                       </span>
                     </div>
+                    {/* Priority Level: Humans=HIGH in RED, Vehicles=MEDIUM in BLUE, Damaged Building=LOW in ORANGE */}
                     <div className="flex justify-between">
                       <span className="text-slate-400">Priority Level:</span>
                       <span
-                        className={`font-semibold ${
-                          target.priority === 'HIGH' ? 'text-rose-400' : 'text-sky-300'
-                        }`}
+                        className={
+                          target.type === 'HUMAN'
+                            ? 'text-rose-400 font-bold'
+                            : target.type === 'VEHICLE'
+                            ? 'text-sky-400 font-bold'
+                            : target.type === 'PLANT'
+                            ? 'text-emerald-400 font-bold'
+                            : 'text-amber-500 font-bold'
+                        }
                       >
-                        {target.priority}
+                        {target.type === 'HUMAN'
+                          ? 'HIGH'
+                          : target.type === 'VEHICLE'
+                          ? 'MEDIUM'
+                          : target.type === 'ANIMAL'
+                          ? 'MEDIUM'
+                          : 'LOW'}
                       </span>
                     </div>
                   </div>
@@ -357,19 +478,272 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                     </span>
                   </div>
 
-                  {onDeleteTarget && (
+                  <div className="flex gap-2 mt-2">
                     <button
-                      onClick={() => onDeleteTarget(target.target_id)}
-                      className="w-full mt-2 py-1 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
+                      onClick={() => handleEditClick(target)}
+                      className="flex-1 py-1 px-2 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
                     >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Delete Target</span>
+                      <Edit2 className="w-3 h-3" />
+                      <span>Modify</span>
                     </button>
-                  )}
+
+                    {onDeleteTarget && (
+                      <button
+                        onClick={() => onDeleteTarget(target.target_id)}
+                        className="flex-1 py-1 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* CUSTOM TARGET SEARCH & PRIORITY REGISTRY (User Requested: Add/Delete/Modify any target) */}
+      <div className="bg-[#182235] border border-[#29374d] rounded-2xl p-6 shadow-xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-[#29374d] gap-3">
+          <div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <TargetIcon className="w-5 h-5 text-indigo-400" />
+              Autonomous Search Target Director & Priority Focus Registry
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Configure custom search objectives across categories (Humans, Vehicles, Buildings, Plants, Animals). Swarm drones prioritize and allocate sensor cones specifically to these designated targets.
+            </p>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-1 bg-[#0e1624] p-1 rounded-lg border border-[#29374d] text-xs">
+            {['ALL', 'HUMAN', 'VEHICLE', 'BUILDING', 'PLANT', 'ANIMAL'].map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setFilterType(cat)}
+                className={`px-2.5 py-1 rounded font-semibold transition ${
+                  filterType === cat
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Target Form (Add New or Edit Existing) */}
+        <form onSubmit={handleSaveTarget} className="bg-[#0e1624] border border-[#29374d] rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono font-bold uppercase text-slate-300 flex items-center gap-2">
+              <PlusCircle className="w-4 h-4 text-emerald-400" />
+              {editingTargetId ? `Modify Target ${editingTargetId}` : 'Register New Mission Search Target'}
+            </span>
+            {editingTargetId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-mono"
+              >
+                <X className="w-3.5 h-3.5" />
+                Cancel Edit
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+            {/* Target Category */}
+            <div>
+              <label className="text-slate-400 block mb-1 font-mono">Target Category:</label>
+              <select
+                value={formType}
+                onChange={(e) => setFormType(e.target.value as TargetType)}
+                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-semibold focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="HUMAN">HUMAN (Survivors / Evacuees)</option>
+                <option value="VEHICLE">VEHICLE (Cars, Trucks, Boats)</option>
+                <option value="BUILDING">BUILDING (Structural Damage)</option>
+                <option value="PLANT">PLANT (Environmental Recon)</option>
+                <option value="ANIMAL">ANIMAL (Livestock & Wildlife)</option>
+              </select>
+            </div>
+
+            {/* Priority Level */}
+            <div>
+              <label className="text-slate-400 block mb-1 font-mono">Priority Level:</label>
+              <select
+                value={formPriority}
+                onChange={(e) => setFormPriority(e.target.value as TargetPriority)}
+                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-semibold focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="HIGH">HIGH (Red Alert Focus)</option>
+                <option value="MEDIUM">MEDIUM (Standard Recon)</option>
+                <option value="LOW">LOW (Secondary Sweep)</option>
+              </select>
+            </div>
+
+            {/* Grid X Coordinate */}
+            <div>
+              <label className="text-slate-400 block mb-1 font-mono">Grid X (0 - 29):</label>
+              <input
+                type="number"
+                min="0"
+                max="29"
+                value={formX}
+                onChange={(e) => setFormX(Math.min(29, Math.max(0, parseInt(e.target.value) || 0)))}
+                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-mono focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Grid Y Coordinate */}
+            <div>
+              <label className="text-slate-400 block mb-1 font-mono">Grid Y (0 - 19):</label>
+              <input
+                type="number"
+                min="0"
+                max="19"
+                value={formY}
+                onChange={(e) => setFormY(Math.min(19, Math.max(0, parseInt(e.target.value) || 0)))}
+                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-mono focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+
+            {/* Target Label */}
+            <div>
+              <label className="text-slate-400 block mb-1 font-mono">Target Label / Note:</label>
+              <input
+                type="text"
+                placeholder="e.g. Roof Group, Rare Flora..."
+                value={formLabel}
+                onChange={(e) => setFormLabel(e.target.value)}
+                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-[#253347]">
+            {editingTargetId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-4 py-2 bg-[#222c3e] hover:bg-[#2b394e] text-slate-300 font-semibold text-xs rounded-lg transition"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow transition flex items-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>{editingTargetId ? 'Apply Target Modifications' : 'Add Target to Autonomous Swarm Focus'}</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Targets Table */}
+        <div className="border border-[#29374d] rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead className="bg-[#0e1624] text-slate-400 border-b border-[#29374d]">
+                <tr>
+                  <th className="py-2.5 px-3">ID</th>
+                  <th className="py-2.5 px-3">Category</th>
+                  <th className="py-2.5 px-3">Priority</th>
+                  <th className="py-2.5 px-3">Grid Coord</th>
+                  <th className="py-2.5 px-3">Geo Position</th>
+                  <th className="py-2.5 px-3">Target Label</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#253347]">
+                {filteredTargets.map((t) => {
+                  const geo = t.geoCoordinates || calculateGeoCoordinates(t.x, t.y);
+                  return (
+                    <tr key={t.target_id} className="hover:bg-[#152336] transition">
+                      <td className="py-2 px-3 font-bold text-sky-400">{t.target_id}</td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            t.type === 'HUMAN'
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                              : t.type === 'VEHICLE'
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                              : t.type === 'ANIMAL'
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : t.type === 'PLANT'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          }`}
+                        >
+                          {t.type}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={
+                            t.type === 'HUMAN'
+                              ? 'text-rose-400 font-bold'
+                              : t.type === 'VEHICLE'
+                              ? 'text-sky-400 font-bold'
+                              : t.type === 'PLANT'
+                              ? 'text-emerald-400 font-bold'
+                              : 'text-amber-500 font-bold'
+                          }
+                        >
+                          {t.type === 'HUMAN'
+                            ? 'HIGH'
+                            : t.type === 'VEHICLE'
+                            ? 'MEDIUM'
+                            : t.type === 'ANIMAL'
+                            ? 'MEDIUM'
+                            : 'LOW'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-white">[{t.x}, {t.y}]</td>
+                      <td className="py-2 px-3 text-slate-400 text-[10px] truncate max-w-[130px]">{geo}</td>
+                      <td className="py-2 px-3 text-slate-200">{t.label || `${t.type} Objective`}</td>
+                      <td className="py-2 px-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            t.found
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          }`}
+                        >
+                          {t.found ? 'VERIFIED' : 'SEARCHING'}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleEditClick(t)}
+                            className="p-1 hover:bg-sky-600/30 text-sky-400 rounded transition"
+                            title="Modify Target"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          {onDeleteTarget && (
+                            <button
+                              onClick={() => onDeleteTarget(t.target_id)}
+                              className="p-1 hover:bg-rose-600/30 text-rose-400 rounded transition"
+                              title="Delete Target"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -451,10 +825,6 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="pt-3 border-t border-[#29374d] text-xs text-slate-400 text-center">
-            CMRIT Autonomous Recon Drones • Bengaluru
           </div>
         </div>
       </div>

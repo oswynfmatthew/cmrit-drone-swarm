@@ -11,7 +11,14 @@ export type DroneStatus =
   | 'COMPLETED'
   | 'FAILED';
 
-export type TargetType = 'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK' | 'ANOMALY';
+export type TargetType =
+  | 'HUMAN'
+  | 'ANIMAL'
+  | 'VEHICLE'
+  | 'STRUCTURAL_CRACK'
+  | 'ANOMALY'
+  | 'PLANT'
+  | 'BUILDING';
 export type TargetPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export interface Target {
@@ -77,6 +84,16 @@ export interface MeshConnection {
   bandwidthMbps: number;
 }
 
+export interface AcousticGnssPoint {
+  x: number;
+  y: number;
+  depthMeters: number;
+  echoTimeMs: number;
+  timestamp: number;
+  rtkQuality: 'RTK_FIXED' | 'RTK_FLOAT';
+  geoCoord: string;
+}
+
 export interface Drone {
   drone_id: string;
   x: number; // in pixels
@@ -118,6 +135,18 @@ export interface Drone {
   meshPeers: MeshConnection[];
   isMeshRelay: boolean;
   hopsToGcs: number;
+
+  // 5. Hydro-Acoustic, Bathymetric & Marine Technologies Suite
+  turtleModeActive?: boolean;
+  inverted?: boolean;
+  floatingOnWater?: boolean;
+  rotorCutState?: 'ARMED' | 'CUT' | 'REVERSED_TURTLE';
+  winchState?: 'RETRACTED' | 'DEPLOYING' | 'DEPLOYED' | 'WINCHING';
+  transducerDepthMeters?: number;
+  tofDepthMeters?: number;
+  tofEchoTimeMs?: number;
+  acousticGnssPoints?: AcousticGnssPoint[];
+  dataFusionProgress?: number;
 }
 
 export type MissionStatus = 'READY' | 'ACTIVE' | 'PAUSED' | 'COMPLETE';

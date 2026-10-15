@@ -336,22 +336,24 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         const tx = target.x * CELL + CELL / 2;
         const ty = target.y * CELL + CELL / 2;
 
-        const isSurveyFinished = missionStatus === 'COMPLETE';
-        const isFound = target.found || isSurveyFinished;
+        // Targets ONLY appear when actually pinpointed and verified by a scanning drone in the field
+        const isFound = target.found;
 
         if (isFound) {
           // Detected Target on Image: Pulsing Tactical Rescue Circle & Corner Brackets
           const pulse = (Math.sin(time * 0.008) + 1) * 3;
 
-          // Color scheme specified: Human=Blue, Animal=Red, Vehicle=Purple, Damaged Building=Yellow
+          // Color scheme specified: Human=Blue, Vehicle=Purple, Animal=Red, Plant=Emerald, Damaged Building=Orange
           const themeColor =
             target.type === 'HUMAN'
               ? '#38bdf8' // Blue
-              : target.type === 'ANIMAL'
-              ? '#ef4444' // Red
               : target.type === 'VEHICLE'
               ? '#c084fc' // Purple
-              : '#eab308'; // Yellow (Damaged Building / Crack)
+              : target.type === 'ANIMAL'
+              ? '#ef4444' // Red
+              : target.type === 'PLANT'
+              ? '#10b981' // Emerald
+              : '#f59e0b'; // Orange (Damaged Building / Crack)
 
           // Outer pulsing rescue ring
           ctx.strokeStyle = themeColor;
@@ -409,15 +411,17 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
           const typeLabel =
             target.type === 'HUMAN'
               ? 'HUMAN'
-              : target.type === 'ANIMAL'
-              ? 'ANIMAL'
               : target.type === 'VEHICLE'
               ? 'VEHICLE'
-              : 'DAMAGED BLDG';
+              : target.type === 'ANIMAL'
+              ? 'ANIMAL'
+              : target.type === 'PLANT'
+              ? 'PLANT'
+              : 'BUILDING';
 
           const probPercent = Math.min(
             100,
-            Math.max(92, Math.round((target.confidence || 0.98) * 100))
+            Math.max(50, Math.round((target.confidence || 0.98) * 100))
           );
           const label = `${typeLabel} [${probPercent}%]`;
 
