@@ -29,10 +29,11 @@ import { DashboardView } from './components/DashboardView';
 import { MissionOverviewView } from './components/MissionOverviewView';
 import { EdgeAISlamView } from './components/EdgeAISlamView';
 import { SwarmMeshDwaView } from './components/SwarmMeshDwaView';
+import { DroneControlsView } from './components/DroneControlsView';
 import { TelemetryDrawer } from './components/TelemetryDrawer';
 import { ImageUploadModal } from './components/ImageUploadModal';
 import { CALAMITY_SCENARIOS, calculateGeoCoordinates } from './satelliteAnalysis';
-import { CheckCircle2, MapPin, Crosshair, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, MapPin, Crosshair, ShieldAlert, Trash2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Navigation View (defaults to 'gcs')
@@ -246,20 +247,37 @@ export const App: React.FC = () => {
         });
         setDrones({ ...currentDrones });
         logEvent('MISSION_RESUMED');
-      } else if (cmd === 'FAIL_D2') {
+      } else if (cmd.startsWith('FAIL_') || cmd.startsWith('FAIL_DRONE:')) {
+        const droneId = cmd.includes(':') ? cmd.split(':')[1] : cmd.replace('FAIL_', '');
         const currentDrones = { ...dronesRef.current };
         const currentTasks = [...tasksRef.current];
 
-        if (currentDrones['D2'] && currentDrones['D2'].healthy) {
-          currentDrones['D2'].healthy = false;
-          currentDrones['D2'].status = 'FAILED';
-          currentDrones['D2'].path = [];
-          logEvent('DRONE_D2_INDUCED_MOTOR_FAILURE');
+        if (currentDrones[droneId]) {
+          const drone = currentDrones[droneId];
+          if (drone.healthy) {
+            drone.healthy = false;
+            drone.status = 'FAILED';
+            drone.path = [];
+            drone.speed = 0;
+            logEvent(`DRONE_${droneId}_MOTOR_FAILURE_INJECTED`);
 
-          reassignFailedDrone(currentTasks, currentDrones, 'D2');
-          setTasks(currentTasks);
-          setDrones({ ...currentDrones });
-          logEvent('D2_TASKS_DYNAMICALLY_REDISTRIBUTED');
+            reassignFailedDrone(currentTasks, currentDrones, droneId);
+            setTasks(currentTasks);
+            setDrones({ ...currentDrones });
+            logEvent(`${droneId}_TASKS_DYNAMICALLY_REDISTRIBUTED`);
+          } else {
+            drone.healthy = true;
+            drone.status = 'IDLE';
+            drone.battery = 100.0;
+            drone.speed = 80.0;
+            logEvent(`DRONE_${droneId}_RESTORED_TO_FLEET`);
+
+            if (missionStatusRef.current === 'ACTIVE') {
+              assignTasks(currentTasks, currentDrones, CELL, blockedRef.current);
+              setTasks(currentTasks);
+            }
+            setDrones({ ...currentDrones });
+          }
         }
       } else if (cmd === 'ADD_TARGET') {
         const currentTargets = { ...targetsRef.current };
@@ -281,6 +299,10 @@ export const App: React.FC = () => {
           ty = (ty + 2) % GRID_H;
         }
 
+        const geoCoord = calculateGeoCoordinates(tx, ty);
+        const conf =
+          assignedType === 'VEHICLE' ? 1.0 : assignedType === 'HUMAN' ? 0.98 : 0.97;
+
         currentTargets[targetId] = {
           target_id: targetId,
           x: tx,
@@ -288,14 +310,15 @@ export const App: React.FC = () => {
           type: assignedType,
           priority: 'HIGH',
           found: false,
-          confidence: 0,
+          confidence: conf,
           assigned_drone: null,
           rgbConfidence: 0,
           lidarConfidence: 0,
           kalmanFusedConfidence: 0,
+          geoCoordinates: geoCoord,
         };
         setTargets(currentTargets);
-        logEvent(`TARGET_${targetId}_[${assignedType}]_DEPLOYED_AT_[${tx},${ty}]`);
+        logEvent(`TARGET_${targetId}_[${assignedType}]_DEPLOYED_AT_[${tx},${ty}]_COORD_${geoCoord}`);
       } else if (cmd === 'RESET') {
         handleReset();
       }
@@ -316,6 +339,7 @@ export const App: React.FC = () => {
         drone.healthy = false;
         drone.status = 'FAILED';
         drone.path = [];
+        drone.speed = 0;
         logEvent(`DRONE_${droneId}_FAILURE_INJECTED`);
 
         reassignFailedDrone(currentTasks, currentDrones, droneId);
@@ -326,6 +350,7 @@ export const App: React.FC = () => {
         drone.healthy = true;
         drone.status = 'IDLE';
         drone.battery = 100.0;
+        drone.speed = 80.0;
         logEvent(`DRONE_${droneId}_RESTORED_TO_FLEET`);
 
         if (missionStatusRef.current === 'ACTIVE') {
@@ -338,38 +363,63 @@ export const App: React.FC = () => {
     [logEvent]
   );
 
-  // Add target at cell
-  const handleAddTargetAt = useCallback(
-    (cellX: number, cellY: number) => {
+  // Delete target
+  const handleDeleteTarget = useCallback(
+    (targetId: string) => {
+      const currentTargets = { ...targetsRef.current };
+      if (currentTargets[targetId]) {
+        const type = currentTargets[targetId].type;
+        delete currentTargets[targetId];
+        setTargets(currentTargets);
+        logEvent(`TARGET_${targetId}_[${type}]_PERMANENTLY_DELETED`);
+      }
+    },
+    [logEvent]
+  );
+
+  // Add target with specific type and calibrated confidence
+  const handleAddTargetWithType = useCallback(
+    (
+      cellX: number,
+      cellY: number,
+      type: 'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK',
+      initialConfidence?: number
+    ) => {
       const currentTargets = { ...targetsRef.current };
       const nextId = Object.keys(currentTargets).length + 1;
       const targetId = `T${nextId}`;
 
-      const types: ('HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK')[] = [
-        'HUMAN',
-        'ANIMAL',
-        'VEHICLE',
-        'STRUCTURAL_CRACK',
-      ];
-      const assignedType = types[(nextId - 1) % types.length];
+      const conf =
+        initialConfidence ||
+        (type === 'VEHICLE' ? 1.0 : type === 'HUMAN' ? 0.98 : type === 'ANIMAL' ? 0.97 : 0.96);
+      const geoCoord = calculateGeoCoordinates(cellX, cellY);
 
       currentTargets[targetId] = {
         target_id: targetId,
         x: cellX,
         y: cellY,
-        type: assignedType,
+        type,
         priority: 'HIGH',
         found: false,
-        confidence: 0,
+        confidence: conf,
         assigned_drone: null,
         rgbConfidence: 0,
         lidarConfidence: 0,
         kalmanFusedConfidence: 0,
+        geoCoordinates: geoCoord,
       };
       setTargets(currentTargets);
-      logEvent(`TARGET_${targetId}_[${assignedType}]_PLACED_AT_[${cellX},${cellY}]`);
+      logEvent(`TARGET_${targetId}_[${type}]_DEPLOYED_AT_[${cellX},${cellY}]_COORD_${geoCoord}`);
     },
     [logEvent]
+  );
+
+  // Add target at cell
+  const handleAddTargetAt = useCallback(
+    (cellX: number, cellY: number) => {
+      handleAddTargetWithType(cellX, cellY, 'HUMAN');
+    },
+    [handleAddTargetWithType]
   );
 
   // Keyboard shortcuts (S, P, R, F, T)
@@ -611,6 +661,8 @@ export const App: React.FC = () => {
                   selectedDroneId={selectedDroneId}
                   onSelectDrone={setSelectedDroneId}
                   onAddTargetAt={handleAddTargetAt}
+                  onDeleteTarget={handleDeleteTarget}
+                  onAddTargetWithType={handleAddTargetWithType}
                   missionStatus={missionStatus}
                   environment={environment}
                   onChangeEnvironment={handleChangeEnvironment}
@@ -655,6 +707,7 @@ export const App: React.FC = () => {
             drones={drones}
             lastCommand={lastCommand}
             onSendCommand={handleCommand}
+            onDeleteTarget={handleDeleteTarget}
           />
         )}
 
@@ -689,6 +742,8 @@ export const App: React.FC = () => {
               selectedDroneId={selectedDroneId}
               onSelectDrone={setSelectedDroneId}
               onAddTargetAt={handleAddTargetAt}
+              onDeleteTarget={handleDeleteTarget}
+              onAddTargetWithType={handleAddTargetWithType}
               missionStatus={missionStatus}
               environment={environment}
               onChangeEnvironment={handleChangeEnvironment}
@@ -726,11 +781,14 @@ export const App: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {Object.values(drones).map((d, dIdx) => {
                   const droneTask = tasks.find((t) => t.assigned_drone === d.drone_id);
+                  const isDroneFailed = !d.healthy || d.status === 'FAILED';
                   const isTaskDone =
                     (droneTask && droneTask.status === 'DONE') ||
                     d.status === 'COMPLETED' ||
                     missionStatus === 'COMPLETE';
-                  const zoneProgress = isTaskDone
+                  const zoneProgress = isDroneFailed
+                    ? 0
+                    : isTaskDone
                     ? 100
                     : droneTask && droneTask.cells.length > 0
                     ? Math.min(100, Math.round((droneTask.progress / droneTask.cells.length) * 100))
@@ -749,10 +807,12 @@ export const App: React.FC = () => {
                     <div
                       key={d.drone_id}
                       onClick={() => setSelectedDroneId(d.drone_id)}
-                      className={`bg-[#182235] border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between ${
-                        selectedDroneId === d.drone_id
+                      className={`border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between ${
+                        isDroneFailed
+                          ? 'border-rose-500 bg-rose-950/60 ring-2 ring-rose-500/60 shadow-rose-950/50 shadow-lg text-rose-200'
+                          : selectedDroneId === d.drone_id
                           ? 'border-sky-400 ring-2 ring-sky-400/30 bg-[#1b263b]'
-                          : 'border-[#29374d] hover:border-slate-500'
+                          : 'border-[#29374d] hover:border-slate-500 bg-[#182235]'
                       }`}
                     >
                       {/* Top Header */}
@@ -763,8 +823,8 @@ export const App: React.FC = () => {
                               <span>{d.drone_id}</span>
                               <span
                                 className={`w-2.5 h-2.5 rounded-full ${
-                                  !d.healthy
-                                    ? 'bg-rose-500 ring-2 ring-rose-500/30'
+                                  isDroneFailed
+                                    ? 'bg-rose-500 ring-2 ring-rose-500/30 animate-ping'
                                     : isTaskDone
                                     ? 'bg-emerald-400 ring-2 ring-emerald-400/30'
                                     : d.status === 'SEARCHING'
@@ -779,7 +839,12 @@ export const App: React.FC = () => {
                           </div>
 
                           <div className="text-right">
-                            {isTaskDone ? (
+                            {isDroneFailed ? (
+                              <span className="text-[11px] font-mono text-rose-400 font-bold flex items-center gap-0.5 animate-pulse">
+                                <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                                FAILED
+                              </span>
+                            ) : isTaskDone ? (
                               <span className="text-[11px] font-mono text-emerald-400 font-bold flex items-center gap-0.5">
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 100% DONE
@@ -796,7 +861,7 @@ export const App: React.FC = () => {
                         <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1.5 pb-2">
                           <span>⚡ {d.battery.toFixed(0)}% Bat</span>
                           <span>Cols {dIdx * 6}–{dIdx * 6 + 5}</span>
-                          <span className={d.healthy ? 'text-emerald-400' : 'text-rose-400'}>
+                          <span className={d.healthy ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-bold'}>
                             {d.healthy ? 'READY' : 'FAULT'}
                           </span>
                         </div>
@@ -862,9 +927,21 @@ export const App: React.FC = () => {
                                     >
                                       {typeBadge.label} [{probPercent}%]
                                     </span>
-                                    <span className="text-[10px] font-mono text-slate-400">
-                                      {target.target_id}
-                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] font-mono text-slate-400">
+                                        {target.target_id}
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteTarget(target.target_id);
+                                        }}
+                                        className="p-0.5 text-slate-500 hover:text-rose-400 transition"
+                                        title="Delete Target"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
                                   </div>
 
                                   <div className="text-[11px] text-slate-200 font-semibold line-clamp-1">
@@ -902,6 +979,22 @@ export const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB 4: Drone Controls Dedicated Dashboard */}
+        {viewMode === 'controls' && (
+          <DroneControlsView
+            missionStatus={missionStatus}
+            drones={drones}
+            targets={targets}
+            speedMultiplier={speedMultiplier}
+            lastCommand={lastCommand}
+            onSetSpeed={setSpeedMultiplier}
+            onSendCommand={handleCommand}
+            onToggleDroneFail={handleToggleDroneFail}
+            onAddTargetWithType={handleAddTargetWithType}
+            onDeleteTarget={handleDeleteTarget}
+          />
         )}
 
         {/* TAB 4: Edge AI & SLAM */}

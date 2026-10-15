@@ -9,9 +9,16 @@ import {
   Play,
   Pause,
   RotateCcw,
+  Sliders,
 } from 'lucide-react';
 
-export type ViewMode = 'gcs' | 'overview' | 'simulation' | 'edge_slam' | 'swarm_mesh';
+export type ViewMode =
+  | 'gcs'
+  | 'overview'
+  | 'simulation'
+  | 'controls'
+  | 'edge_slam'
+  | 'swarm_mesh';
 
 interface HeaderProps {
   viewMode: ViewMode;
@@ -87,6 +94,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Monitor className="w-3.5 h-3.5" />
             <span>Simulation Grid</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('controls')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+              viewMode === 'controls'
+                ? 'bg-sky-500 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Drone Controls</span>
           </button>
 
           <button

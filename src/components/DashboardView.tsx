@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Drone, Target, MissionStatus } from '../types';
 import {
   Play,
@@ -9,6 +9,7 @@ import {
   Radio,
   Zap,
   Cpu,
+  ChevronDown,
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -36,6 +37,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   selectedDroneId,
   onToggleDroneFail,
 }) => {
+  const [isFailDropdownOpen, setIsFailDropdownOpen] = useState(false);
+
   const getDroneIndicator = (drone: Drone) => {
     if (!drone.healthy) return '🔴';
     if (drone.battery <= 20) return '🟠';
@@ -89,51 +92,100 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </span>
         </h2>
 
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2">
+          {/* START */}
           <button
             onClick={() => onSendCommand('START')}
             disabled={missionStatus === 'ACTIVE'}
-            className="flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
+            className="flex items-center justify-center gap-1.5 py-2 px-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>START</span>
           </button>
 
+          {/* PAUSE */}
           <button
             onClick={() => onSendCommand('PAUSE')}
             disabled={missionStatus !== 'ACTIVE'}
-            className="flex items-center justify-center gap-1.5 py-2 px-3 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
+            className="flex items-center justify-center gap-1.5 py-2 px-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
           >
             <Pause className="w-3.5 h-3.5 fill-current" />
             <span>PAUSE</span>
           </button>
 
+          {/* RESUME */}
           <button
             onClick={() => onSendCommand('RESUME')}
             disabled={missionStatus !== 'PAUSED'}
-            className="flex items-center justify-center gap-1.5 py-2 px-3 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
+            className="flex items-center justify-center gap-1.5 py-2 px-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
           >
             <Play className="w-3.5 h-3.5" />
             <span>RESUME</span>
           </button>
 
-          <button
-            onClick={() => onSendCommand('FAIL_D2')}
-            className="flex items-center justify-center gap-1.5 py-2 px-2 bg-rose-700 hover:bg-rose-600 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
-            title="Inject motor failure on D2 to demonstrate decentralized task reallocation"
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>FAIL D2</span>
-          </button>
+          {/* FAIL A DRONE with interactive dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setIsFailDropdownOpen(!isFailDropdownOpen)}
+              className="w-full flex items-center justify-between gap-1 py-2 px-2 bg-rose-700 hover:bg-rose-600 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95 border border-rose-500/50"
+              title="Fail a specific drone (D1 to D5)"
+            >
+              <div className="flex items-center gap-1 truncate">
+                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">FAIL A DRONE</span>
+              </div>
+              <ChevronDown className="w-3 h-3 flex-shrink-0" />
+            </button>
 
+            {isFailDropdownOpen && (
+              <div className="absolute left-0 mt-1.5 w-48 bg-[#121a28] border-2 border-rose-500 rounded-xl shadow-2xl z-50 p-1.5 space-y-1">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 px-2 py-0.5 border-b border-[#29374d]">
+                  Select Drone to Fail:
+                </div>
+                {['D1', 'D2', 'D3', 'D4', 'D5'].map((dId) => {
+                  const d = drones[dId];
+                  const isFailed = d && (!d.healthy || d.status === 'FAILED');
+                  return (
+                    <button
+                      key={dId}
+                      onClick={() => {
+                        onToggleDroneFail(dId);
+                        setIsFailDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs font-mono transition text-left ${
+                        isFailed
+                          ? 'bg-rose-950 text-rose-300 hover:bg-rose-900 border border-rose-500/40'
+                          : 'bg-[#182235] text-slate-200 hover:bg-rose-600 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isFailed ? 'bg-rose-500 animate-ping' : 'bg-emerald-400'
+                          }`}
+                        />
+                        <span>{isFailed ? `Fix ${dId}` : `Fail ${dId}`}</span>
+                      </div>
+                      <span className="text-[9px] opacity-75">
+                        {isFailed ? '[FAILED]' : '[OK]'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* TARGET */}
           <button
             onClick={() => onSendCommand('ADD_TARGET')}
             className="flex items-center justify-center gap-1.5 py-2 px-2 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg shadow transition active:scale-95"
           >
             <PlusCircle className="w-3.5 h-3.5" />
-            <span>TARGET</span>
+            <span>+TARGET</span>
           </button>
 
+          {/* RESET */}
           <button
             onClick={() => onSendCommand('RESET')}
             className="flex items-center justify-center gap-1.5 py-2 px-2 bg-[#222c3e] hover:bg-[#2e3e56] border border-[#374966] text-slate-300 font-semibold text-xs rounded-lg shadow transition active:scale-95"
@@ -159,13 +211,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="space-y-2">
           {Object.values(drones).map((drone) => {
             const isSelected = selectedDroneId === drone.drone_id;
+            const isFailed = !drone.healthy || drone.status === 'FAILED';
 
             return (
               <div
                 key={drone.drone_id}
                 onClick={() => onSelectDrone(isSelected ? null : drone.drone_id)}
-                className={`bg-[#121a28] border rounded-lg p-3 transition cursor-pointer flex items-center justify-between gap-3 hover:border-sky-500/60 ${
-                  isSelected ? 'border-sky-400 ring-1 ring-sky-400/30' : 'border-[#29374d]'
+                className={`border rounded-lg p-3 transition cursor-pointer flex items-center justify-between gap-3 hover:border-sky-500/60 ${
+                  isFailed
+                    ? 'border-rose-500 bg-rose-950/50 ring-2 ring-rose-500/50 shadow-rose-950/50 shadow-lg text-rose-200'
+                    : isSelected
+                    ? 'bg-[#1b263b] border-sky-400 ring-1 ring-sky-400/30'
+                    : 'bg-[#121a28] border-[#29374d]'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
@@ -174,19 +231,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div className="font-bold text-xs text-white flex items-center gap-2">
                       <span>{drone.drone_id}</span>
                       <span
-                        className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
-                          !drone.healthy
-                            ? 'bg-rose-500/20 text-rose-400'
+                        className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                          isFailed
+                            ? 'bg-rose-600 text-white animate-pulse'
                             : drone.status === 'SEARCHING'
                             ? 'bg-emerald-500/20 text-emerald-400'
                             : 'bg-slate-700 text-slate-300'
                         }`}
                       >
-                        {drone.status}
+                        {isFailed ? '🚨 FAILED' : drone.status}
                       </span>
                     </div>
                     <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      Task: {drone.task_id || '-'} • Hops: {drone.hopsToGcs}
+                      {isFailed ? (
+                        <span className="text-rose-400 font-semibold">MOTOR FAULT • Tasks Reassigned</span>
+                      ) : (
+                        <span>Task: {drone.task_id || '-'} • Hops: {drone.hopsToGcs}</span>
+                      )}
                     </div>
                   </div>
                 </div>

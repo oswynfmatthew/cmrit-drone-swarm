@@ -13,6 +13,8 @@ import {
   Layers,
   X,
   CheckCircle,
+  Trash2,
+  Crosshair,
 } from 'lucide-react';
 
 interface SimulationCanvasProps {
@@ -23,6 +25,13 @@ interface SimulationCanvasProps {
   selectedDroneId: string | null;
   onSelectDrone: (id: string | null) => void;
   onAddTargetAt: (cellX: number, cellY: number) => void;
+  onDeleteTarget?: (targetId: string) => void;
+  onAddTargetWithType?: (
+    cellX: number,
+    cellY: number,
+    type: 'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK',
+    initialConfidence?: number
+  ) => void;
   missionStatus: string;
   environment: EnvironmentType;
   onChangeEnvironment: (env: EnvironmentType) => void;
@@ -42,6 +51,8 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   selectedDroneId,
   onSelectDrone,
   onAddTargetAt,
+  onDeleteTarget,
+  onAddTargetWithType,
   missionStatus,
   environment,
   onChangeEnvironment,
@@ -63,6 +74,11 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   const [showMeshLinks, setShowMeshLinks] = useState(true);
   const [showVoxelGrid, setShowVoxelGrid] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [activeTargetType, setActiveTargetType] = useState<
+    'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK'
+  >('HUMAN');
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [inspectedTargetId, setInspectedTargetId] = useState<string | null>(null);
   const gridOverlayOpacity = 0.35;
 
   // Load background image into Image object
@@ -654,6 +670,29 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
+    // 1. Check if an existing target was clicked
+    let clickedTargetId: string | null = null;
+    for (const target of Object.values(targets)) {
+      const tx = target.x * CELL + CELL / 2;
+      const ty = target.y * CELL + CELL / 2;
+      const dist = Math.hypot(clickX - tx, clickY - ty);
+      if (dist <= 22) {
+        clickedTargetId = target.target_id;
+        break;
+      }
+    }
+
+    if (clickedTargetId) {
+      if (isDeleteMode) {
+        onDeleteTarget?.(clickedTargetId);
+        setInspectedTargetId(null);
+        return;
+      }
+      setInspectedTargetId((prev) => (prev === clickedTargetId ? null : clickedTargetId));
+      return;
+    }
+
+    // 2. Check if a drone was clicked
     let clickedDrone: string | null = null;
     for (const drone of Object.values(drones)) {
       const dist = Math.hypot(clickX - drone.x, clickY - drone.y);
@@ -668,12 +707,28 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
       return;
     }
 
+    // 3. If in Delete Mode, don't place targets on empty space
+    if (isDeleteMode) return;
+
+    // 4. Place precise target at clicked grid cell
     const cellX = Math.floor(clickX / CELL);
     const cellY = Math.floor(clickY / CELL);
 
     if (cellX >= 0 && cellX < GRID_W && cellY >= 0 && cellY < GRID_H) {
       if (!blocked.has(pointKey([cellX, cellY]))) {
-        onAddTargetAt(cellX, cellY);
+        if (onAddTargetWithType) {
+          const conf =
+            activeTargetType === 'VEHICLE'
+              ? 1.0
+              : activeTargetType === 'HUMAN'
+              ? 0.98
+              : activeTargetType === 'ANIMAL'
+              ? 0.97
+              : 0.96;
+          onAddTargetWithType(cellX, cellY, activeTargetType, conf);
+        } else {
+          onAddTargetAt(cellX, cellY);
+        }
       }
     }
   };
@@ -859,6 +914,97 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         </div>
       </div>
 
+      {/* Target Tool Selector Sub-bar */}
+      <div className="px-4 py-2 bg-[#141d2b] border-b border-[#243247] flex flex-wrap items-center justify-between text-xs gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-slate-400 font-semibold flex items-center gap-1 font-mono text-[11px]">
+            <Crosshair className="w-3.5 h-3.5 text-sky-400" />
+            Click Action:
+          </span>
+
+          <button
+            onClick={() => {
+              setIsDeleteMode(false);
+              setActiveTargetType('HUMAN');
+            }}
+            className={`px-2.5 py-1 rounded-md font-semibold transition flex items-center gap-1.5 border text-xs ${
+              !isDeleteMode && activeTargetType === 'HUMAN'
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/50 shadow'
+                : 'bg-[#1e2838] text-slate-400 border-[#2f3f58] hover:text-white'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+            <span>Human [Blue]</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setIsDeleteMode(false);
+              setActiveTargetType('ANIMAL');
+            }}
+            className={`px-2.5 py-1 rounded-md font-semibold transition flex items-center gap-1.5 border text-xs ${
+              !isDeleteMode && activeTargetType === 'ANIMAL'
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow'
+                : 'bg-[#1e2838] text-slate-400 border-[#2f3f58] hover:text-white'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+            <span>Animal [Red]</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setIsDeleteMode(false);
+              setActiveTargetType('VEHICLE');
+            }}
+            className={`px-2.5 py-1 rounded-md font-semibold transition flex items-center gap-1.5 border text-xs ${
+              !isDeleteMode && activeTargetType === 'VEHICLE'
+                ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow'
+                : 'bg-[#1e2838] text-slate-400 border-[#2f3f58] hover:text-white'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+            <span>Vehicle [Purple]</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setIsDeleteMode(false);
+              setActiveTargetType('STRUCTURAL_CRACK');
+            }}
+            className={`px-2.5 py-1 rounded-md font-semibold transition flex items-center gap-1.5 border text-xs ${
+              !isDeleteMode && activeTargetType === 'STRUCTURAL_CRACK'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow'
+                : 'bg-[#1e2838] text-slate-400 border-[#2f3f58] hover:text-white'
+            }`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <span>Damaged Bldg [Yellow]</span>
+          </button>
+
+          <button
+            onClick={() => setIsDeleteMode(!isDeleteMode)}
+            className={`px-2.5 py-1 rounded-md font-semibold transition flex items-center gap-1.5 border text-xs ${
+              isDeleteMode
+                ? 'bg-rose-600 text-white border-rose-400 shadow animate-pulse'
+                : 'bg-[#1e2838] text-rose-400 border-[#2f3f58] hover:bg-rose-950/40'
+            }`}
+            title="Click any target to delete it"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>{isDeleteMode ? 'Delete Mode Active' : 'Delete Target'}</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-mono text-slate-400">
+          {isDeleteMode ? (
+            <span className="text-rose-400 font-bold">Click any target to delete</span>
+          ) : (
+            <span>Click canvas to place {activeTargetType}</span>
+          )}
+        </div>
+      </div>
+
       {/* Canvas Viewport */}
       <div
         ref={containerRef}
@@ -883,17 +1029,44 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             style={{ width: `${WIDTH}px`, height: `${HEIGHT}px` }}
           />
 
-          <div className="absolute bottom-2 left-2 pointer-events-none bg-[#0e1624]/85 backdrop-blur border border-[#2a384e] px-2.5 py-1 rounded text-[11px] text-slate-300 font-mono flex items-center gap-2">
-            <span>🖱️ Click drone to inspect</span>
-            <span>•</span>
-            <span>Click to add target</span>
-            {backgroundImageUrl && (
-              <>
-                <span>•</span>
-                <span className="text-emerald-400">Satellite Background Active</span>
-              </>
-            )}
-          </div>
+          {/* Satellite Background Active Indicator in Green */}
+          {backgroundImageUrl && (
+            <div className="absolute bottom-2 left-2 pointer-events-none bg-[#0e1624]/90 backdrop-blur border border-emerald-500/50 px-2.5 py-1 rounded text-[11px] font-mono flex items-center gap-2 shadow-lg z-20">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-emerald-400 font-semibold">Satellite Background Active</span>
+            </div>
+          )}
+
+          {/* Inspected Target popup with Delete button */}
+          {inspectedTargetId && targets[inspectedTargetId] && (
+            <div className="absolute top-2 right-2 bg-[#0e1624]/95 backdrop-blur border border-sky-500/50 px-3 py-2 rounded-xl shadow-2xl flex items-center gap-3 text-xs z-30 font-mono">
+              <div>
+                <span className="font-bold text-white">{targets[inspectedTargetId].target_id}: </span>
+                <span className="text-sky-300 font-bold">
+                  {targets[inspectedTargetId].type} [{Math.round((targets[inspectedTargetId].confidence || 0.98) * 100)}%]
+                </span>
+                <span className="text-slate-400 ml-1">
+                  [{targets[inspectedTargetId].x}, {targets[inspectedTargetId].y}]
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  onDeleteTarget?.(inspectedTargetId);
+                  setInspectedTargetId(null);
+                }}
+                className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow"
+              >
+                <Trash2 className="w-3 h-3" />
+                Delete
+              </button>
+              <button
+                onClick={() => setInspectedTargetId(null)}
+                className="text-slate-400 hover:text-white p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

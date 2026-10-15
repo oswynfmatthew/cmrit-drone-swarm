@@ -1,6 +1,18 @@
 import React from 'react';
 import { Target, MissionStatus, Drone } from '../types';
-import { Activity, Clock, Terminal, Crosshair, ShieldCheck, Zap } from 'lucide-react';
+import {
+  Activity,
+  Clock,
+  Terminal,
+  Crosshair,
+  ShieldCheck,
+  Zap,
+  Radio,
+  Trash2,
+  MapPin,
+  AlertTriangle,
+} from 'lucide-react';
+import { calculateGeoCoordinates } from '../satelliteAnalysis';
 
 interface MissionOverviewViewProps {
   missionStatus: MissionStatus;
@@ -13,6 +25,7 @@ interface MissionOverviewViewProps {
   drones: Record<string, Drone>;
   lastCommand: string;
   onSendCommand: (cmd: string) => void;
+  onDeleteTarget?: (targetId: string) => void;
 }
 
 export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
@@ -26,6 +39,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
   drones,
   lastCommand,
   onSendCommand,
+  onDeleteTarget,
 }) => {
   const getStatusSymbol = (status: string) => {
     switch (status.toUpperCase()) {
@@ -154,6 +168,83 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </div>
       </div>
 
+      {/* Autonomous Recon Drone Fleet Status (D1 to D5) with EXPLICIT RED HIGHLIGHT if failed */}
+      <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-white flex items-center gap-2">
+            <Radio className="w-4 h-4 text-sky-400" />
+            Autonomous Drone Fleet Telemetry Status (D1 - D5)
+          </h3>
+          <span className="text-xs font-mono text-slate-400">
+            {Object.values(drones).filter((d) => d.healthy).length} / 5 Operational
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {Object.values(drones).map((drone, idx) => {
+            const isFailed = !drone.healthy || drone.status === 'FAILED';
+
+            return (
+              <div
+                key={drone.drone_id}
+                className={`p-3.5 rounded-xl border transition flex flex-col justify-between gap-2.5 ${
+                  isFailed
+                    ? 'border-rose-500 bg-rose-950/60 text-rose-200 ring-2 ring-rose-500/60 shadow-rose-950/50 shadow-lg'
+                    : 'bg-[#121a28] border-[#29374d]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold font-mono text-white text-sm flex items-center gap-1.5">
+                    <span>{drone.drone_id}</span>
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        isFailed
+                          ? 'bg-rose-500 animate-ping'
+                          : drone.status === 'COMPLETED'
+                          ? 'bg-emerald-400'
+                          : 'bg-sky-400 animate-pulse'
+                      }`}
+                    />
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0e1624] text-slate-400 border border-[#29374d]">
+                    Zone Z{idx + 1}
+                  </span>
+                </div>
+
+                {isFailed ? (
+                  <div className="bg-rose-600 border border-rose-400 text-white font-mono font-bold text-[10px] px-2 py-1 rounded text-center tracking-wide shadow animate-pulse">
+                    🚨 FAILED (MOTOR FAULT)
+                  </div>
+                ) : (
+                  <div className="bg-[#0e1624] border border-[#29374d] text-emerald-400 font-mono font-semibold text-[10px] px-2 py-1 rounded text-center">
+                    ✓ OPERATIONAL ({drone.status})
+                  </div>
+                )}
+
+                <div className="text-[11px] font-mono space-y-1 text-slate-400 pt-1 border-t border-[#253347]">
+                  <div className="flex justify-between">
+                    <span>Battery:</span>
+                    <strong className={drone.battery < 20 ? 'text-rose-400' : 'text-slate-200'}>
+                      {drone.battery.toFixed(0)}%
+                    </strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Assigned Task:</span>
+                    <span className="text-slate-300 truncate">{drone.task_id || 'IDLE'}</span>
+                  </div>
+                  {isFailed && (
+                    <div className="text-[10px] text-rose-300 font-semibold pt-0.5 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 text-rose-400" />
+                      <span>Tasks Reassigned</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Target Intelligence Dossiers */}
       <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
         <div className="flex items-center justify-between mb-4">
@@ -167,91 +258,118 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Object.values(targets).map((target) => (
-            <div
-              key={target.target_id}
-              className={`p-4 rounded-xl border flex flex-col justify-between gap-3 transition ${
-                target.found
-                  ? 'bg-[#152336] border-emerald-500/40 shadow-emerald-950/20 shadow-lg'
-                  : 'bg-[#121a28] border-[#29374d]'
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-base text-white flex items-center gap-2">
-                    🎯 {target.target_id}
+          {Object.values(targets).map((target) => {
+            const prob = Math.min(
+              100,
+              Math.max(92, Math.round((target.confidence || 0.98) * 100))
+            );
+            const geoCoord =
+              target.geoCoordinates || calculateGeoCoordinates(target.x, target.y);
+
+            return (
+              <div
+                key={target.target_id}
+                className={`p-4 rounded-xl border flex flex-col justify-between gap-3 transition ${
+                  target.found
+                    ? 'bg-[#152336] border-emerald-500/40 shadow-emerald-950/20 shadow-lg'
+                    : 'bg-[#121a28] border-[#29374d]'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-base text-white flex items-center gap-2">
+                      🎯 {target.target_id}
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                          target.type === 'HUMAN'
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                            : target.type === 'ANIMAL'
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                            : target.type === 'VEHICLE'
+                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        {target.type} [{prob}%]
+                      </span>
+                    </span>
+
                     <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                        target.type === 'HUMAN'
-                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                          : target.type === 'VEHICLE'
-                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                        target.found
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                           : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                       }`}
                     >
-                      {target.type}
+                      {target.found ? '🟢 FOUND' : '🟡 SEARCHING'}
                     </span>
-                  </span>
+                  </div>
 
-                  <span
-                    className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
-                      target.found
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                    }`}
-                  >
-                    {target.found ? '🟢 FOUND' : '🟡 SEARCHING'}
-                  </span>
+                  <div className="mt-3 space-y-1.5 text-xs text-slate-300">
+                    <div className="flex items-center gap-1 text-slate-300">
+                      <MapPin className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                      <span className="font-mono text-slate-200 truncate">{geoCoord}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Grid Coordinates:</span>
+                      <span className="font-mono text-white">[{target.x}, {target.y}]</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Assigned Drone:</span>
+                      <span className="font-mono text-sky-400 font-semibold">
+                        {target.assigned_drone || 'Scanning'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Priority Level:</span>
+                      <span
+                        className={`font-semibold ${
+                          target.priority === 'HIGH' ? 'text-rose-400' : 'text-sky-300'
+                        }`}
+                      >
+                        {target.priority}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="mt-3 space-y-1.5 text-xs text-slate-300">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Coordinates:</span>
-                    <span className="font-mono text-white">[{target.x}, {target.y}]</span>
+                {/* Sensor Fusion Confidence breakdown */}
+                <div className="pt-3 border-t border-[#29374d] space-y-2 text-[11px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">RGB Optical Camera:</span>
+                    <span className="font-mono text-slate-200">
+                      {target.found ? `${Math.round(target.rgbConfidence * 100)}%` : '0%'}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Assigned Drone:</span>
-                    <span className="font-mono text-sky-400 font-semibold">{target.assigned_drone || 'Scanning'}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">360° LiDAR / Radar:</span>
+                    <span className="font-mono text-slate-200">
+                      {target.found ? `${Math.round(target.lidarConfidence * 100)}%` : '0%'}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Priority Level:</span>
-                    <span
-                      className={`font-semibold ${
-                        target.priority === 'HIGH' ? 'text-rose-400' : 'text-sky-300'
-                      }`}
+                  <div className="flex justify-between items-center font-semibold">
+                    <span className="text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Kalman Filter Fusion:
+                    </span>
+                    <span className="font-mono text-emerald-400">
+                      {target.found ? `${Math.round(target.kalmanFusedConfidence * 100)}%` : '0%'}
+                    </span>
+                  </div>
+
+                  {onDeleteTarget && (
+                    <button
+                      onClick={() => onDeleteTarget(target.target_id)}
+                      className="w-full mt-2 py-1 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
                     >
-                      {target.priority}
-                    </span>
-                  </div>
+                      <Trash2 className="w-3 h-3" />
+                      <span>Delete Target</span>
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {/* Sensor Fusion Confidence breakdown */}
-              <div className="pt-3 border-t border-[#29374d] space-y-2 text-[11px]">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">RGB Optical Camera:</span>
-                  <span className="font-mono text-slate-200">
-                    {target.found ? `${Math.round(target.rgbConfidence * 100)}%` : '0%'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">360° LiDAR / Radar:</span>
-                  <span className="font-mono text-slate-200">
-                    {target.found ? `${Math.round(target.lidarConfidence * 100)}%` : '0%'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center font-semibold">
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    Kalman Filter Fusion:
-                  </span>
-                  <span className="font-mono text-emerald-400">
-                    {target.found ? `${Math.round(target.kalmanFusedConfidence * 100)}%` : '0%'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
