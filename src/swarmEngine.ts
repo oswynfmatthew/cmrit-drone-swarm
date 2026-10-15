@@ -296,55 +296,101 @@ export function createDrones(): Record<string, Drone> {
       meshPeers: [],
       isMeshRelay: i === 2, // D3 serves as central bridge relay
       hopsToGcs: 1,
+
+      // Hydro-Acoustic, Bathymetric & Marine Technologies Suite
+      turtleModeActive: false,
+      inverted: false,
+      floatingOnWater: false,
+      rotorCutState: 'ARMED',
+      winchState: 'RETRACTED',
+      transducerDepthMeters: 0.0,
+      tofDepthMeters: 3.4 + (i * 0.8),
+      tofEchoTimeMs: parseFloat((((3.4 + i * 0.8) * 2 / 1482) * 1000).toFixed(2)),
+      acousticGnssPoints: [],
+      dataFusionProgress: 0,
     };
   });
 
   return drones;
 }
 
-// Initial targets matching the PDF's 3 classes: HUMAN, VEHICLE, STRUCTURAL_CRACK
+// Initial targets matching user-specified coordinates (12 Humans in Blue, 15 Vehicles in Purple)
 export function createInitialTargets(): Record<string, Target> {
-  return {
-    T1: {
-      target_id: 'T1',
-      x: 24,
-      y: 4,
+  const humanCoords: [number, number, number, string][] = [
+    [8, 14, 0.98, 'Rooftop SOS Survivor'],
+    [8, 13, 0.95, 'Balcony Civilian'],
+    [9, 14, 0.99, 'SOS Distress Signaler'],
+    [11, 8, 0.97, 'Stranded Rooftop Evacuee'],
+    [11, 9, 0.94, 'Balcony Trapped Resident'],
+    [10, 10, 0.96, 'Residential Roof Survivor'],
+    [10, 9, 0.98, 'Commercial Porch Evacuee'],
+    [19, 6, 1.0, 'SOS Rooftop Survivors (Group)'],
+    [20, 6, 0.99, 'Commercial Roof Evacuees'],
+    [3, 6, 0.95, 'Isolated Warehouse Survivor'],
+    [19, 8, 0.97, 'Terrace Distress Caller'],
+    [22, 8, 0.96, 'Flood Shelter Rooftop Citizen'],
+  ];
+
+  const vehicleCoords: [number, number, number, string][] = [
+    [13, 17, 0.98, 'Submerged Commuter Car'],
+    [13, 14, 0.96, 'Marooned Transport Van'],
+    [26, 16, 0.97, 'Stranded SUV'],
+    [24, 13, 0.99, 'Commercial Box Truck'],
+    [27, 19, 0.94, 'Partially Submerged Vehicle'],
+    [18, 11, 1.0, 'Swift-Water Rescue Inflatable Craft'],
+    [17, 10, 0.96, 'Waterlogged Sedan'],
+    [16, 4, 0.98, 'Flooded Service Vehicle'],
+    [16, 5, 0.97, 'Submerged Delivery Van'],
+    [16, 3, 0.95, 'Abandoned Service Van'],
+    [16, 1, 0.96, 'Northern Inundated Vehicle'],
+    [17, 9, 0.97, 'Waterlogged Commuter Car'],
+    [20, 9, 0.95, 'Submerged Pickup Truck'],
+    [25, 9, 0.98, 'Flooded Logistics Truck'],
+    [28, 8, 0.94, 'Riverbank Stranded Car'],
+  ];
+
+  const targets: Record<string, Target> = {};
+  let idx = 1;
+
+  humanCoords.forEach(([x, y, conf, label]) => {
+    const id = `T${idx++}`;
+    targets[id] = {
+      target_id: id,
+      x,
+      y,
       type: 'HUMAN',
       priority: 'HIGH',
+      label,
+      description: `Confirmed human target at grid [${x}, ${y}] with ${Math.round(conf * 100)}% confidence`,
       found: false,
-      confidence: 0,
+      confidence: conf,
       assigned_drone: null,
       rgbConfidence: 0,
       lidarConfidence: 0,
       kalmanFusedConfidence: 0,
-    },
-    T2: {
-      target_id: 'T2',
-      x: 7,
-      y: 15,
+    };
+  });
+
+  vehicleCoords.forEach(([x, y, conf, label]) => {
+    const id = `T${idx++}`;
+    targets[id] = {
+      target_id: id,
+      x,
+      y,
       type: 'VEHICLE',
       priority: 'MEDIUM',
+      label,
+      description: `Confirmed vehicle target at grid [${x}, ${y}] with ${Math.round(conf * 100)}% confidence`,
       found: false,
-      confidence: 0,
+      confidence: conf,
       assigned_drone: null,
       rgbConfidence: 0,
       lidarConfidence: 0,
       kalmanFusedConfidence: 0,
-    },
-    T3: {
-      target_id: 'T3',
-      x: 17,
-      y: 10,
-      type: 'STRUCTURAL_CRACK',
-      priority: 'HIGH',
-      found: false,
-      confidence: 0,
-      assigned_drone: null,
-      rgbConfidence: 0,
-      lidarConfidence: 0,
-      kalmanFusedConfidence: 0,
-    },
-  };
+    };
+  });
+
+  return targets;
 }
 
 // 360-degree LiDAR Raycasting & Point Cloud generation
@@ -687,62 +733,64 @@ export function buildPathForTask(
 }
 
 // Realistic Smooth Aeronautical Drone Kinematics
-// Implements angular rate limit (slerp heading), lookahead waypoint smoothing, and banking pitch/roll
+// Implements glitch-free angular smoothing (atan2 normalized difference), continuous step carryover
+// across waypoints for seamless 180° lawnmower turns and zero-jitter traversal
 export function moveDrone(drone: Drone, dt: number): void {
   if (drone.path.length === 0) return;
   if (['FAILED', 'LOW_BATTERY', 'RETURNING', 'PAUSED', 'COMPLETED'].includes(drone.status)) {
     return;
   }
 
-  const [cellX, cellY] = drone.path[0];
-  const targetX = cellX * CELL + CELL / 2;
-  const targetY = cellY * CELL + CELL / 2;
+  // 1. Smooth Linear Motion with Continuous Step Carryover across Waypoints
+  let remainingStep = Math.max(0.0, drone.speed * dt);
 
-  const dx = targetX - drone.x;
-  const dy = targetY - drone.y;
-  const dist = Math.hypot(dx, dy);
+  while (remainingStep > 0 && drone.path.length > 0) {
+    const [cellX, cellY] = drone.path[0];
+    const targetX = cellX * CELL + CELL / 2;
+    const targetY = cellY * CELL + CELL / 2;
 
-  if (dist <= 0.001) {
-    drone.path.shift();
-    return;
-  }
+    const dx = targetX - drone.x;
+    const dy = targetY - drone.y;
+    const dist = Math.hypot(dx, dy);
 
-  // 1. Smooth Angular Heading Rate Slerp (real-life quadcopter yaw dynamics)
-  const desiredHeading = Math.atan2(dy, dx);
-  let headingDiff = desiredHeading - drone.heading;
-  while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
-  while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
+    if (dist <= 0.001) {
+      drone.path.shift();
+      continue;
+    }
 
-  const maxYawRate = 5.5; // rad/sec
-  const yawStep = Math.sign(headingDiff) * Math.min(Math.abs(headingDiff), maxYawRate * dt);
-  drone.heading += yawStep;
+    // Smooth Glitch-Free Heading Interpolation (eliminates 180° turn sign-flipping flutter)
+    const desiredHeading = Math.atan2(dy, dx);
+    const headingDiff = Math.atan2(
+      Math.sin(desiredHeading - drone.heading),
+      Math.cos(desiredHeading - drone.heading)
+    );
 
-  // IMU banking roll & forward pitch proportional to yaw & flight velocity
-  drone.imu.roll = -headingDiff * 0.35;
-  drone.imu.pitch = Math.min(0.25, (drone.speed / 100) * 0.18);
-  drone.imu.yaw = drone.heading;
+    // Exponential smoothing for natural aircraft yaw without oscillation
+    const turnRate = 8.5; // rad/sec easing
+    drone.heading += headingDiff * Math.min(1.0, turnRate * dt);
 
-  // 2. Waypoint Lookahead Transition (Curves smoothly around corners instead of hard stopping)
-  if (dist <= 7.5 && drone.path.length > 1) {
-    drone.path.shift();
-  }
+    // Smooth IMU banking roll & forward pitch proportional to velocity and angular turn rate
+    const targetRoll = -Math.max(-0.35, Math.min(0.35, headingDiff * 0.4));
+    drone.imu.roll += (targetRoll - drone.imu.roll) * Math.min(1.0, 10.0 * dt);
+    drone.imu.pitch = Math.min(0.22, (drone.speed / 100) * 0.16);
+    drone.imu.yaw = drone.heading;
 
-  // 3. Smooth Linear Step
-  const step = Math.max(0.0, drone.speed * dt);
-
-  if (dist <= step) {
-    drone.distance_travelled += dist;
-    drone.x = targetX;
-    drone.y = targetY;
-    drone.path.shift();
-    drone.battery = Math.max(0.0, drone.battery - dist * 0.0015);
-    drone.searched_cells += 1;
-  } else {
-    const ratio = step / dist;
-    drone.x += dx * ratio;
-    drone.y += dy * ratio;
-    drone.distance_travelled += step;
-    drone.battery = Math.max(0.0, drone.battery - step * 0.0015);
+    if (dist <= remainingStep) {
+      drone.distance_travelled += dist;
+      drone.x = targetX;
+      drone.y = targetY;
+      drone.battery = Math.max(0.0, drone.battery - dist * 0.0012);
+      drone.searched_cells += 1;
+      remainingStep -= dist;
+      drone.path.shift();
+    } else {
+      const ratio = remainingStep / dist;
+      drone.x += dx * ratio;
+      drone.y += dy * ratio;
+      drone.distance_travelled += remainingStep;
+      drone.battery = Math.max(0.0, drone.battery - remainingStep * 0.0012);
+      remainingStep = 0;
+    }
   }
 
   if (drone.battery <= 15 && !['FAILED', 'RETURNING', 'LOW_BATTERY'].includes(drone.status)) {
@@ -751,7 +799,7 @@ export function moveDrone(drone: Drone, dt: number): void {
   }
 }
 
-// Update task progression - Guarantees accurate zone completion and 100% finish
+// Update task progression - Smoothly tracks zone cells without destroying active flight paths
 export function updateTasks(
   drones: Record<string, Drone>,
   tasks: Task[],
@@ -772,12 +820,22 @@ export function updateTasks(
       continue;
     }
 
-    if (drone.path.length === 0) {
-      drone.path = buildPathForTask(drone, task, blocked);
+    // Advance task progress as drone physically covers each assigned cell
+    while (task.progress < task.cells.length) {
+      const targetCell = task.cells[task.progress];
+      const distToTarget = Math.hypot(
+        drone.x / CELL - (targetCell[0] + 0.5),
+        drone.y / CELL - (targetCell[1] + 0.5)
+      );
+
+      if (distToTarget <= 0.85) {
+        task.progress += 1;
+      } else {
+        break;
+      }
     }
 
-    // If all reachable cells in task have been visited
-    if (drone.path.length === 0 || task.progress >= task.cells.length) {
+    if (task.progress >= task.cells.length) {
       task.status = 'DONE';
       task.progress = task.cells.length;
       drone.task_id = null;
@@ -786,30 +844,118 @@ export function updateTasks(
       continue;
     }
 
-    const current: Point = [Math.floor(drone.x / CELL), Math.floor(drone.y / CELL)];
-    const targetCell = task.cells[task.progress];
-
-    const distToTarget = Math.hypot(
-      drone.x / CELL - (targetCell[0] + 0.5),
-      drone.y / CELL - (targetCell[1] + 0.5)
-    );
-
-    if (
-      (current[0] === targetCell[0] && current[1] === targetCell[1]) ||
-      distToTarget <= 0.8
-    ) {
-      task.progress += 1;
-      drone.path = [];
-
-      if (task.progress >= task.cells.length) {
-        task.status = 'DONE';
-        task.progress = task.cells.length;
-        drone.task_id = null;
-        drone.status = 'COMPLETED';
-        drone.path = [];
-      }
+    // Only plan path if current path is depleted, keeping existing waypoints unbroken
+    if (drone.path.length === 0) {
+      drone.path = buildPathForTask(drone, task, blocked);
     }
   }
+}
+
+// ============================================================================
+// Hydro-Acoustic, Bathymetric & Marine Technologies Suite
+// ============================================================================
+
+// 1. Time-of-Flight (ToF) Depth Calculation: Depth = (v * t) / 2
+// v = speed of sound in water (approx 1482 m/s in freshwater at 20°C)
+// t = round-trip acoustic pulse echo time in seconds
+export function calculateTofDepth(echoTimeMs: number, soundSpeedWater: number = 1482): number {
+  const timeSeconds = Math.max(0, echoTimeMs) / 1000.0;
+  return parseFloat(((soundSpeedWater * timeSeconds) / 2.0).toFixed(2));
+}
+
+// 2. Turtle Mode (Self-Righting Algorithm)
+// Software routine that detects if drone is inverted on water and automatically reverses
+// the spin direction of two diagonal motors (M1 & M3) to create directional torque and flip upright
+export function executeTurtleMode(
+  drone: Drone,
+  onStep?: (msg: string) => void
+): void {
+  drone.inverted = true;
+  drone.turtleModeActive = true;
+  drone.rotorCutState = 'REVERSED_TURTLE';
+  onStep?.(`${drone.drone_id}: Inversion detected by 6-axis IMU (pitch > 150°). Turtle Mode self-righting initiated.`);
+
+  setTimeout(() => {
+    onStep?.(`${drone.drone_id}: Directional torque applied via reversed M1/M3 motor rotation. Righting hull...`);
+  }, 700);
+
+  setTimeout(() => {
+    drone.inverted = false;
+    drone.turtleModeActive = false;
+    drone.rotorCutState = 'ARMED';
+    drone.floatingOnWater = true;
+    drone.imu.roll = 0;
+    drone.imu.pitch = 0;
+    onStep?.(`${drone.drone_id}: Craft successfully righted into floating attitude. Propellers locked to standby.`);
+  }, 1600);
+}
+
+// 3. Automated Rotor-Cut & Winch Control Logic
+// Onboard sequencing logic that safely shuts down propulsion motors once the drone detects
+// it is floating, then commands motorized winch to lower transducer into calm water
+export function executeRotorCutAndWinchDeploy(
+  drone: Drone,
+  targetDepthMeters: number = 0.5,
+  onStep?: (msg: string) => void
+): void {
+  drone.floatingOnWater = true;
+  drone.rotorCutState = 'CUT';
+  onStep?.(`${drone.drone_id}: Water landing confirmed via float switches. Propulsion motors CUT (safety shutdown).`);
+
+  drone.winchState = 'DEPLOYING';
+  onStep?.(`${drone.drone_id}: Motorized winch deploying acoustic transducer to ${targetDepthMeters}m depth...`);
+
+  setTimeout(() => {
+    drone.transducerDepthMeters = targetDepthMeters;
+    drone.winchState = 'DEPLOYED';
+    onStep?.(`${drone.drone_id}: Transducer stabilized in calm water column. Acoustic sounding active.`);
+  }, 1200);
+}
+
+// Retract winch and rearm motors
+export function executeWinchRetractAndRearm(
+  drone: Drone,
+  onStep?: (msg: string) => void
+): void {
+  drone.winchState = 'WINCHING';
+  onStep?.(`${drone.drone_id}: Retracting transducer to amphibious fuselage cradle...`);
+
+  setTimeout(() => {
+    drone.transducerDepthMeters = 0.0;
+    drone.winchState = 'RETRACTED';
+    drone.rotorCutState = 'ARMED';
+    drone.floatingOnWater = false;
+    onStep?.(`${drone.drone_id}: Winch locked. Propulsion motors REARMED for takeoff.`);
+  }, 1200);
+}
+
+// 4. Acoustic-GNSS Timestamping & Georeferencing
+// Coordinates sonar pings with onboard RTK GPS stream in real time, saving synchronized (X, Y, Depth) data points
+export function recordAcousticGnssPing(
+  drone: Drone,
+  measuredDepthMeters: number,
+  geoCoordStr: string
+): void {
+  const echoTime = parseFloat(((measuredDepthMeters * 2 / 1482) * 1000).toFixed(2));
+  drone.tofDepthMeters = measuredDepthMeters;
+  drone.tofEchoTimeMs = echoTime;
+
+  if (!drone.acousticGnssPoints) {
+    drone.acousticGnssPoints = [];
+  }
+
+  const newPoint = {
+    x: Math.round(drone.x / CELL),
+    y: Math.round(drone.y / CELL),
+    depthMeters: measuredDepthMeters,
+    echoTimeMs: echoTime,
+    timestamp: Date.now(),
+    rtkQuality: 'RTK_FIXED' as const,
+    geoCoord: geoCoordStr,
+  };
+
+  // Keep last 30 synchronized acoustic-GNSS points
+  drone.acousticGnssPoints = [newPoint, ...drone.acousticGnssPoints].slice(0, 30);
 }
 
 // Multi-Modal Sensor Fusion & YOLO Object Detection
@@ -830,35 +976,38 @@ export function detectTargetsWithSensorFusion(
       const dy = drone.y / cellSize - (target.y + 0.5);
       const d = Math.hypot(dx, dy);
 
-      // Detection threshold: within 2.8 cells (optical camera + LiDAR cone footprint at 30m altitude)
-      if (d <= 2.8) {
+      // Detection threshold: within 1.4 cells (direct downward camera cone & sensor footprint over target cell)
+      if (d <= 1.4) {
         // Multi-modal sensor calculations (Slide 6 from PDF):
-        // 1. RGB Optical: High resolution, slightly affected by atmospheric darkness
-        const opticalClarity = Math.max(0.65, 1.0 - darknessLevel * 0.35);
-        const baseProb =
+        // 1. RGB Optical: High resolution, calibrated to ground truth accuracy
+        const opticalClarity = Math.max(0.7, 1.0 - darknessLevel * 0.3);
+        const calibratedProb =
           target.confidence > 0
             ? target.confidence
             : target.type === 'VEHICLE'
-            ? 1.0
+            ? 0.98
             : target.type === 'HUMAN'
             ? 0.98
             : target.type === 'ANIMAL'
             ? 0.96
             : 0.99;
 
-        const proximityFactor = Math.max(0.94, 1.0 - (d / 3.5) * 0.06);
-        const rgbScore = Math.min(1.0, baseProb * opticalClarity * proximityFactor);
+        const rgbScore = Math.min(1.0, calibratedProb * opticalClarity);
 
         // 2. 360 LiDAR: Active laser sensing unaffected by darkness
-        const lidarScore = Math.min(1.0, 0.96 + (1.0 - d / 3.5) * 0.04);
+        const lidarScore = Math.min(1.0, 0.96 + (1.0 - Math.min(1.0, d / 2.0)) * 0.04);
 
         // 3. Extended Kalman Filter (EKF) mathematical fusion:
-        const fusedConfidence = Math.min(1.0, Math.max(0.92, 0.5 * rgbScore + 0.5 * lidarScore));
+        // Preserves calibrated probability (e.g. 100% remains 100%, 98% remains 98%)
+        const fusedConfidence =
+          calibratedProb >= 0.99
+            ? calibratedProb
+            : Math.min(1.0, Math.max(0.92, 0.7 * calibratedProb + 0.15 * rgbScore + 0.15 * lidarScore));
 
         target.rgbConfidence = rgbScore;
         target.lidarConfidence = lidarScore;
         target.kalmanFusedConfidence = fusedConfidence;
-        target.confidence = fusedConfidence;
+        target.confidence = Math.round(fusedConfidence * 100) / 100;
 
         // Bounding box for YOLO
         const tx = target.x * cellSize + cellSize / 2;
@@ -879,13 +1028,13 @@ export function detectTargetsWithSensorFusion(
         drone.detectedObjectTrack = {
           targetId: target.target_id,
           type: target.type,
-          confidence: fusedConfidence,
+          confidence: target.confidence,
           fps: drone.edgeCompute.inferenceFps,
         };
 
         logEvent(
-          `TARGET_${target.target_id}_[${target.type}]_DETECTED_BY_${drone.drone_id}_CONF_${Math.round(
-            fusedConfidence * 100
+          `TARGET_${target.target_id}_[${target.type}]_PINPOINTED_BY_${drone.drone_id}_AT_[${target.x},${target.y}]_CONF_${Math.round(
+            target.confidence * 100
           )}%`
         );
         break;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Drone, EnvironmentType, MissionStatus, MovingObstacle, Target, Task } from './types';
+import { Drone, EnvironmentType, MissionStatus, MovingObstacle, Target, Task, TargetType, TargetPriority } from './types';
 import {
   CELL,
   GRID_H,
@@ -30,6 +30,7 @@ import { MissionOverviewView } from './components/MissionOverviewView';
 import { EdgeAISlamView } from './components/EdgeAISlamView';
 import { SwarmMeshDwaView } from './components/SwarmMeshDwaView';
 import { DroneControlsView } from './components/DroneControlsView';
+import { HydroBathymetricSuiteView } from './components/HydroBathymetricSuiteView';
 import { TelemetryDrawer } from './components/TelemetryDrawer';
 import { ImageUploadModal } from './components/ImageUploadModal';
 import { CALAMITY_SCENARIOS, calculateGeoCoordinates } from './satelliteAnalysis';
@@ -193,7 +194,23 @@ export const App: React.FC = () => {
     const newBlocked = backgroundImageUrl ? new Set<string>() : makeObstacles(environment);
     blockedRef.current = newBlocked;
     const newDrones = createDrones();
-    const newTargets = createInitialTargets();
+    
+    // Cleanly reset targets to initial undiscovered state (found: false, assigned_drone: null)
+    const newTargets: Record<string, Target> = {};
+    if (backgroundImageUrl) {
+      const activeScenario =
+        CALAMITY_SCENARIOS.find((s) => s.imageUrl === backgroundImageUrl) ||
+        CALAMITY_SCENARIOS[0];
+      activeScenario.targets.forEach((t) => {
+        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null };
+      });
+    } else {
+      const init = createInitialTargets();
+      Object.values(init).forEach((t) => {
+        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null };
+      });
+    }
+
     const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, newBlocked);
     const newMoving = createMovingObstacles();
 
@@ -377,13 +394,15 @@ export const App: React.FC = () => {
     [logEvent]
   );
 
-  // Add target with specific type and calibrated confidence
+  // Add target with specific type, priority, and calibrated confidence
   const handleAddTargetWithType = useCallback(
     (
       cellX: number,
       cellY: number,
-      type: 'HUMAN' | 'ANIMAL' | 'VEHICLE' | 'STRUCTURAL_CRACK',
-      initialConfidence?: number
+      type: TargetType,
+      initialConfidence?: number,
+      label?: string,
+      priority?: TargetPriority
     ) => {
       const currentTargets = { ...targetsRef.current };
       const nextId = Object.keys(currentTargets).length + 1;
@@ -391,15 +410,32 @@ export const App: React.FC = () => {
 
       const conf =
         initialConfidence ||
-        (type === 'VEHICLE' ? 1.0 : type === 'HUMAN' ? 0.98 : type === 'ANIMAL' ? 0.97 : 0.96);
+        (type === 'VEHICLE'
+          ? 1.0
+          : type === 'HUMAN'
+          ? 0.98
+          : type === 'ANIMAL'
+          ? 0.97
+          : 0.96);
       const geoCoord = calculateGeoCoordinates(cellX, cellY);
+
+      const targetPriority: TargetPriority =
+        priority ||
+        (type === 'HUMAN'
+          ? 'HIGH'
+          : type === 'VEHICLE'
+          ? 'MEDIUM'
+          : type === 'ANIMAL'
+          ? 'MEDIUM'
+          : 'LOW');
 
       currentTargets[targetId] = {
         target_id: targetId,
         x: cellX,
         y: cellY,
         type,
-        priority: 'HIGH',
+        priority: targetPriority,
+        label: label || `${type} Objective`,
         found: false,
         confidence: conf,
         assigned_drone: null,
@@ -410,6 +446,32 @@ export const App: React.FC = () => {
       };
       setTargets(currentTargets);
       logEvent(`TARGET_${targetId}_[${type}]_DEPLOYED_AT_[${cellX},${cellY}]_COORD_${geoCoord}`);
+    },
+    [logEvent]
+  );
+
+  // Modify / update target properties
+  const handleUpdateTarget = useCallback(
+    (targetId: string, updates: Partial<Target>) => {
+      const currentTargets = { ...targetsRef.current };
+      if (!currentTargets[targetId]) return;
+
+      currentTargets[targetId] = {
+        ...currentTargets[targetId],
+        ...updates,
+      };
+
+      if (updates.x !== undefined || updates.y !== undefined) {
+        currentTargets[targetId].geoCoordinates = calculateGeoCoordinates(
+          currentTargets[targetId].x,
+          currentTargets[targetId].y
+        );
+      }
+
+      setTargets(currentTargets);
+      logEvent(
+        `TARGET_${targetId}_MODIFIED: ${updates.type || ''} ${updates.label || ''} priority: ${updates.priority || ''}`
+      );
     },
     [logEvent]
   );
@@ -556,16 +618,12 @@ export const App: React.FC = () => {
         // 5. Update task completion
         updateTasks(currentDrones, currentTasks, blocked);
 
-        // 5b. Zone sweep guarantee: Any targets in a drone's scanned zone are verified so no target is missed!
+        // 5b. Zone sweep guarantee: Once an assigned zone sweep is 100% completed, verify any remaining targets in that zone
         for (const target of Object.values(currentTargets)) {
           if (!target.found) {
             const targetZoneIndex = Math.min(4, Math.floor(target.x / 6));
             const assignedTask = currentTasks.find((t) => t.task_id === `Z${targetZoneIndex + 1}`);
-            if (
-              assignedTask &&
-              (assignedTask.status === 'DONE' ||
-                assignedTask.progress > assignedTask.cells.length * 0.4)
-            ) {
+            if (assignedTask && assignedTask.status === 'DONE') {
               target.found = true;
               target.assigned_drone = assignedTask.assigned_drone || `D${targetZoneIndex + 1}`;
               if (!target.confidence || target.confidence < 0.92) {
@@ -708,6 +766,8 @@ export const App: React.FC = () => {
             lastCommand={lastCommand}
             onSendCommand={handleCommand}
             onDeleteTarget={handleDeleteTarget}
+            onAddTargetWithType={handleAddTargetWithType}
+            onUpdateTarget={handleUpdateTarget}
           />
         )}
 
@@ -795,13 +855,15 @@ export const App: React.FC = () => {
                     : 0;
 
                   // Find targets pinpointed/highlighted by this drone in its assigned 6-column zone
-                  const droneTargets = Object.values(targets).filter((t) => {
-                    const targetZoneIndex = Math.min(4, Math.floor(t.x / 6));
-                    const isAssigned =
-                      t.assigned_drone === d.drone_id ||
-                      (!t.assigned_drone && targetZoneIndex === dIdx);
-                    return (t.found || isTaskDone) && isAssigned;
-                  });
+                  const droneTargets = isDroneFailed
+                    ? []
+                    : Object.values(targets).filter((t) => {
+                        const targetZoneIndex = Math.min(4, Math.floor(t.x / 6));
+                        const isAssigned =
+                          t.assigned_drone === d.drone_id ||
+                          (!t.assigned_drone && targetZoneIndex === dIdx);
+                        return t.found && isAssigned;
+                      });
 
                   return (
                     <div
@@ -870,10 +932,17 @@ export const App: React.FC = () => {
                         <div className="space-y-1.5 pt-1">
                           <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold font-mono flex items-center justify-between">
                             <span>Pinpointed Targets:</span>
-                            <span className="text-white font-semibold">{droneTargets.length}</span>
+                            <span className={isDroneFailed ? 'text-rose-400' : 'text-white'}>
+                              {isDroneFailed ? 'N/A' : droneTargets.length}
+                            </span>
                           </div>
 
-                          {droneTargets.length === 0 ? (
+                          {isDroneFailed ? (
+                            <div className="bg-rose-950/70 border border-rose-500/60 rounded-lg p-2.5 text-center text-[10px] font-mono text-rose-300">
+                              <span className="font-bold block text-rose-200">DRONE FAILED</span>
+                              <span className="text-[9px] text-rose-400">Data link severed • No telemetry stored</span>
+                            </div>
+                          ) : droneTargets.length === 0 ? (
                             <div className="bg-[#0e1624] border border-[#29374d] rounded-lg p-2 text-center text-[10px] font-mono text-slate-400">
                               {isTaskDone ? (
                                 <span className="text-slate-400">✓ Sector Clear (0 Targets)</span>
@@ -1017,6 +1086,16 @@ export const App: React.FC = () => {
             movingObstacles={movingObstacles}
             onToggleDwaObstacles={() => setMovingObstaclesEnabled(!movingObstaclesEnabled)}
             movingObstaclesEnabled={movingObstaclesEnabled}
+          />
+        )}
+
+        {/* TAB 6: Hydro-Acoustic & Bathymetric Marine Architecture */}
+        {viewMode === 'hydro' && (
+          <HydroBathymetricSuiteView
+            drones={drones}
+            selectedDroneId={selectedDroneId}
+            onSelectDrone={setSelectedDroneId}
+            onLogEvent={logEvent}
           />
         )}
       </main>
