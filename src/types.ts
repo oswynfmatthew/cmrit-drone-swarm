@@ -141,7 +141,7 @@ export interface MovingObstacle {
 
 export interface MissionState {
   mission_status: MissionStatus;
-  area_covered: number; // 0 to 100 %
+  area_covered: number; // 0 to 100 
   targets_found: number;
   targets_total: number;
   mission_time: number;
