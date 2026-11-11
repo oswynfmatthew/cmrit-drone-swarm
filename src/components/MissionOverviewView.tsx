@@ -16,6 +16,7 @@ import {
   Check,
   X,
   Target as TargetIcon,
+  Radar,
 } from 'lucide-react';
 import { calculateGeoCoordinates } from '../satelliteAnalysis';
 
@@ -45,8 +46,8 @@ interface MissionOverviewViewProps {
 export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
   missionStatus,
   areaCovered,
-  targetsFound,
-  targetsTotal,
+  targetsFound: _targetsFound,
+  targetsTotal: _targetsTotal,
   missionTime,
   events,
   targets,
@@ -164,10 +165,11 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
   };
 
   const allTargetsList = Object.values(targets);
+  const verifiedTargets = allTargetsList.filter((t) => t.found);
   const filteredTargets =
     filterType === 'ALL'
-      ? allTargetsList
-      : allTargetsList.filter((t) => t.type === filterType);
+      ? verifiedTargets
+      : verifiedTargets.filter((t) => t.type === filterType);
 
   return (
     <div className="space-y-6">
@@ -242,19 +244,21 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         {/* Card 3: Targets */}
         <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
           <div className="text-xs font-semibold uppercase tracking-wider text-[#9ca8b8] mb-1 flex items-center justify-between">
-            <span>DETECTED TARGETS</span>
-            <span className="text-amber-400 text-[10px] font-mono">YOLO + EKF</span>
+            <span>VERIFIED TARGETS</span>
+            <span className="text-emerald-400 text-[10px] font-mono">YOLO + EKF</span>
           </div>
-          <div className="text-2xl font-bold text-amber-400 mt-2 flex items-center gap-2">
-            <Crosshair className="w-6 h-6 text-amber-400" />
+          <div className="text-2xl font-bold text-emerald-400 mt-2 flex items-center gap-2">
+            <Crosshair className="w-6 h-6 text-emerald-400" />
             <span>
-              {targetsFound} / {targetsTotal}
+              {verifiedTargets.length} Verified
             </span>
           </div>
           <div className="text-[11px] text-slate-400 mt-2">
-            {targetsTotal - targetsFound === 0
-              ? 'All multi-modal objectives verified'
-              : `${targetsTotal - targetsFound} objective(s) unlocated in field`}
+            {missionStatus === 'ACTIVE'
+              ? 'Real-time swarm perception sweep in progress'
+              : missionStatus === 'COMPLETE'
+              ? 'All designated search sectors cleared'
+              : 'Dossiers populate live as drones sweep grid'}
           </div>
         </div>
 
@@ -353,155 +357,173 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
 
       {/* Target Intelligence Dossiers */}
       <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h3 className="text-base font-semibold text-white flex items-center gap-2">
-            <Crosshair className="w-4 h-4 text-amber-400" />
+            <Crosshair className="w-4 h-4 text-emerald-400" />
             Classified Recon Target Dossiers (Multi-Modal Sensor Fusion)
           </h3>
-          <span className="text-xs font-mono text-slate-400">
-            {targetsFound} / {targetsTotal} Verified by Edge CNN
+          <span className="text-xs font-mono text-slate-400 flex items-center gap-2 bg-[#0e1624] px-2.5 py-1 rounded-md border border-[#29374d]">
+            <span className={`w-2 h-2 rounded-full ${verifiedTargets.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            <strong className="text-emerald-400">{verifiedTargets.length}</strong> Target{verifiedTargets.length === 1 ? '' : 's'} Verified in Real Time
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {Object.values(targets).map((target) => {
-            const prob = Math.min(
-              100,
-              Math.max(88, Math.round((target.confidence || 0.98) * 100))
-            );
-            const geoCoord =
-              target.geoCoordinates || calculateGeoCoordinates(target.x, target.y);
+        {filteredTargets.length === 0 ? (
+          <div className="p-8 rounded-xl bg-[#0e1624] border border-[#222f42] text-center space-y-3">
+            <div className="w-14 h-14 rounded-full border border-sky-500/30 mx-auto flex items-center justify-center relative bg-sky-950/20">
+              <Radar className="w-7 h-7 text-sky-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <span className="w-2.5 h-2.5 rounded-full bg-sky-400 absolute animate-ping" />
+            </div>
+            <div className="text-sm font-semibold text-white">
+              {missionStatus === 'ACTIVE'
+                ? 'Drones Actively Sweeping Grid Sectors...'
+                : 'Zero Pre-Set Targets • Dynamic Real-Time Discovery'}
+            </div>
+            <p className="text-xs text-slate-400 max-w-lg mx-auto">
+              {missionStatus === 'ACTIVE'
+                ? 'No targets confirmed yet. As drones D1–D5 fly their search paths and enter exact grid cells with survivors, vehicles, or animals, their verified dossiers will dynamically populate here in 100% real-time synchronization.'
+                : 'Targets are not pre-exposed. Click "Start Mission" to deploy the autonomous drone swarm. Each target dossier, GPS position, and multi-sensor confidence breakdown will appear live the exact millisecond a drone detects it.'}
+            </p>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-[11px] font-mono text-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Real-Time EKF Sensor Fusion Active</span>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {filteredTargets.map((target) => {
+              const prob = Math.min(
+                100,
+                Math.max(88, Math.round((target.confidence || 0.98) * 100))
+              );
+              const geoCoord =
+                target.geoCoordinates || calculateGeoCoordinates(target.x, target.y);
 
-            return (
-              <div
-                key={target.target_id}
-                className={`p-4 rounded-xl border flex flex-col justify-between gap-3 transition ${
-                  target.found
-                    ? 'bg-[#152336] border-emerald-500/40 shadow-emerald-950/20 shadow-lg'
-                    : 'bg-[#121a28] border-[#29374d]'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-base text-white flex items-center gap-2">
-                      <span className="font-mono text-sky-400">{target.target_id}</span>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
-                          target.type === 'HUMAN'
-                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+              return (
+                <div
+                  key={target.target_id}
+                  className="p-4 rounded-xl border flex flex-col justify-between gap-3 transition-all duration-500 animate-fade-in bg-[#152336] border-emerald-500/40 shadow-emerald-950/20 shadow-lg"
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-base text-white flex items-center gap-2">
+                        <span className="font-mono text-sky-400">{target.target_id}</span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
+                            target.type === 'HUMAN'
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                              : target.type === 'VEHICLE'
+                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                              : target.type === 'BOAT'
+                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                              : target.type === 'ANIMAL'
+                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : target.type === 'PLANT'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          }`}
+                        >
+                          {target.type} [{prob}%]
+                        </span>
+                      </span>
+
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        VERIFIED FOUND
+                      </span>
+                    </div>
+
+                    <div className="mt-3 space-y-1.5 text-xs text-slate-300">
+                      <div className="flex items-center gap-1 text-slate-300">
+                        <MapPin className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                        <span className="font-mono text-slate-200 truncate">{geoCoord}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Grid Coordinates:</span>
+                        <span className="font-mono text-white">
+                          [{target.col ?? target.x}, {target.row ?? target.y}] • Cell #{target.cell_id ?? ((target.row ?? target.y) * 30 + (target.col ?? target.x))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Discovering Drone:</span>
+                        <span className="font-mono text-sky-400 font-semibold">
+                          {target.assigned_drone || 'D1'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Priority Level:</span>
+                        <span
+                          className={
+                            target.type === 'HUMAN'
+                              ? 'text-rose-400 font-bold'
+                              : target.type === 'VEHICLE'
+                              ? 'text-sky-400 font-bold'
+                              : target.type === 'PLANT'
+                              ? 'text-emerald-400 font-bold'
+                              : 'text-amber-500 font-bold'
+                          }
+                        >
+                          {target.type === 'HUMAN'
+                            ? 'HIGH'
                             : target.type === 'VEHICLE'
-                            ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                            ? 'MEDIUM'
                             : target.type === 'ANIMAL'
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                            : target.type === 'PLANT'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                            : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                        }`}
-                      >
-                        {target.type} [{prob}%]
-                      </span>
-                    </span>
-
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
-                        target.found
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}
-                    >
-                      {target.found ? 'FOUND' : 'SEARCHING'}
-                    </span>
+                            ? 'MEDIUM'
+                            : 'LOW'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-3 space-y-1.5 text-xs text-slate-300">
-                    <div className="flex items-center gap-1 text-slate-300">
-                      <MapPin className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                      <span className="font-mono text-slate-200 truncate">{geoCoord}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Grid Coordinates:</span>
-                      <span className="font-mono text-white">[{target.x}, {target.y}]</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Assigned Drone:</span>
-                      <span className="font-mono text-sky-400 font-semibold">
-                        {target.assigned_drone || 'Scanning'}
+                  {/* Sensor Fusion Confidence breakdown */}
+                  <div className="pt-3 border-t border-[#29374d] space-y-2 text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">RGB Optical Camera:</span>
+                      <span className="font-mono text-slate-200">
+                        {`${Math.round((target.rgbConfidence || 0.95) * 100)}%`}
                       </span>
                     </div>
-                    {/* Priority Level: Humans=HIGH in RED, Vehicles=MEDIUM in BLUE, Damaged Building=LOW in ORANGE */}
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Priority Level:</span>
-                      <span
-                        className={
-                          target.type === 'HUMAN'
-                            ? 'text-rose-400 font-bold'
-                            : target.type === 'VEHICLE'
-                            ? 'text-sky-400 font-bold'
-                            : target.type === 'PLANT'
-                            ? 'text-emerald-400 font-bold'
-                            : 'text-amber-500 font-bold'
-                        }
-                      >
-                        {target.type === 'HUMAN'
-                          ? 'HIGH'
-                          : target.type === 'VEHICLE'
-                          ? 'MEDIUM'
-                          : target.type === 'ANIMAL'
-                          ? 'MEDIUM'
-                          : 'LOW'}
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">360° LiDAR / Radar:</span>
+                      <span className="font-mono text-slate-200">
+                        {`${Math.round((target.lidarConfidence || 0.98) * 100)}%`}
                       </span>
                     </div>
-                  </div>
-                </div>
+                    <div className="flex justify-between items-center font-semibold">
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        Kalman Filter Fusion:
+                      </span>
+                      <span className="font-mono text-emerald-400">
+                        {`${Math.round((target.kalmanFusedConfidence || target.confidence || 0.98) * 100)}%`}
+                      </span>
+                    </div>
 
-                {/* Sensor Fusion Confidence breakdown */}
-                <div className="pt-3 border-t border-[#29374d] space-y-2 text-[11px]">
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">RGB Optical Camera:</span>
-                    <span className="font-mono text-slate-200">
-                      {target.found ? `${Math.round(target.rgbConfidence * 100)}%` : '0%'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">360° LiDAR / Radar:</span>
-                    <span className="font-mono text-slate-200">
-                      {target.found ? `${Math.round(target.lidarConfidence * 100)}%` : '0%'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center font-semibold">
-                    <span className="text-emerald-400 flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Kalman Filter Fusion:
-                    </span>
-                    <span className="font-mono text-emerald-400">
-                      {target.found ? `${Math.round(target.kalmanFusedConfidence * 100)}%` : '0%'}
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => handleEditClick(target)}
-                      className="flex-1 py-1 px-2 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                      <span>Modify</span>
-                    </button>
-
-                    {onDeleteTarget && (
+                    <div className="flex gap-2 mt-2">
                       <button
-                        onClick={() => onDeleteTarget(target.target_id)}
-                        className="flex-1 py-1 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
+                        onClick={() => handleEditClick(target)}
+                        className="flex-1 py-1 px-2 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Delete</span>
+                        <Edit2 className="w-3 h-3" />
+                        <span>Modify</span>
                       </button>
-                    )}
+
+                      {onDeleteTarget && (
+                        <button
+                          onClick={() => onDeleteTarget(target.target_id)}
+                          className="flex-1 py-1 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* CUSTOM TARGET SEARCH & PRIORITY REGISTRY (User Requested: Add/Delete/Modify any target) */}
@@ -661,7 +683,22 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#253347]">
-                {filteredTargets.map((t) => {
+                {filteredTargets.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 px-4 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Radar className="w-5 h-5 text-indigo-400 animate-spin" style={{ animationDuration: '4s' }} />
+                        <span className="text-xs font-sans text-slate-300 font-medium">
+                          No verified targets in registry yet
+                        </span>
+                        <span className="text-[11px] font-sans text-slate-500">
+                          Targets populate here in 100% real-time synchronization as drones survey each grid coordinate.
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTargets.map((t) => {
                   const geo = t.geoCoordinates || calculateGeoCoordinates(t.x, t.y);
                   return (
                     <tr key={t.target_id} className="hover:bg-[#152336] transition">
@@ -740,7 +777,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>

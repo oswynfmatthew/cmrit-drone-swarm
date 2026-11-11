@@ -15,6 +15,7 @@ export type TargetType =
   | 'HUMAN'
   | 'ANIMAL'
   | 'VEHICLE'
+  | 'BOAT'
   | 'STRUCTURAL_CRACK'
   | 'ANOMALY'
   | 'PLANT'
@@ -25,6 +26,11 @@ export interface Target {
   target_id: string;
   x: number; // cell coord (0 - 29)
   y: number; // cell coord (0 - 19)
+  col?: number; // 0 to 29
+  row?: number; // 0 to 19
+  cell_id?: number; // discrete cell index: row * 30 + col (0 to 599)
+  target_screen_x?: number; // screen pixel X coordinate
+  target_screen_y?: number; // screen pixel Y coordinate
   type: TargetType;
   priority: TargetPriority;
   label?: string; // e.g. "Stranded Survivor", "Trapped Animal", "Submerged Vehicle"
@@ -38,6 +44,23 @@ export interface Target {
   kalmanFusedConfidence: number;
   bbox?: { x: number; y: number; w: number; h: number };
   geoCoordinates?: string; // e.g. "34.0538° N, 118.2415° W"
+}
+
+export interface GeminiVisionDetection {
+  label: 'human' | 'vehicle' | 'boat' | 'animal' | string;
+  col: number;
+  row: number;
+  cell_id: number;
+  confidence: number;
+}
+
+export interface GeminiVisionResponse {
+  grid_dimensions: {
+    cols: number;
+    rows: number;
+    total_cells: number;
+  };
+  detections: GeminiVisionDetection[];
 }
 
 export type TaskStatus = 'PENDING' | 'ACTIVE' | 'DONE';

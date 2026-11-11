@@ -24,7 +24,7 @@ interface DroneControlsViewProps {
   onSetSpeed: (speed: number) => void;
   onSendCommand: (cmd: string) => void;
   onToggleDroneFail: (droneId: string) => void;
-  onAddTargetWithType: (
+  onAddTargetWithType?: (
     cellX: number,
     cellY: number,
     type: TargetType,
@@ -42,25 +42,9 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
   onSetSpeed,
   onSendCommand,
   onToggleDroneFail,
-  onAddTargetWithType,
   onDeleteTarget,
 }) => {
   const [isFailDropdownOpen, setIsFailDropdownOpen] = useState(false);
-  const [selectedTargetType, setSelectedTargetType] = useState<TargetType>('HUMAN');
-  const [customX, setCustomX] = useState<number>(15);
-  const [customY, setCustomY] = useState<number>(10);
-
-  const handleDeployTarget = () => {
-    const conf =
-      selectedTargetType === 'VEHICLE'
-        ? 1.0
-        : selectedTargetType === 'HUMAN'
-        ? 0.98
-        : selectedTargetType === 'ANIMAL'
-        ? 0.97
-        : 0.96;
-    onAddTargetWithType(customX, customY, selectedTargetType, conf);
-  };
 
   const droneList = Object.values(drones);
   const failedDrones = droneList.filter((d) => !d.healthy || d.status === 'FAILED');
@@ -367,137 +351,107 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
         </div>
       </div>
 
-      {/* TARGET DECK: PRECISE TARGET PLACEMENT & DELETION */}
-      <div className="bg-[#182235] border border-[#29374d] rounded-2xl p-6 shadow-xl space-y-5">
+      {/* SWARM FLIGHT OPERATIONS & EMERGENCY PROTOCOLS */}
+      <div className="bg-[#182235] border border-[#29374d] rounded-2xl p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-[#29374d]">
           <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <PlusCircle className="w-4 h-4 text-emerald-400" />
-            Target Placement & Active Target Deletion Deck
+            <Sliders className="w-4 h-4 text-sky-400" />
+            Swarm Flight Operations & Fleet Maintenance
           </h3>
           <span className="text-xs font-mono text-slate-400">
-            {Object.keys(targets).length} Registered Targets
+            Automated Mesh Telemetry Synchronization
           </span>
         </div>
 
-        {/* Target Creation Strip */}
-        <div className="bg-[#121a28] border border-[#29374d] rounded-xl p-4 space-y-3">
-          <div className="text-xs font-semibold text-slate-300">
-            1. Select Precise Target Classification:
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-            <button
-              onClick={() => setSelectedTargetType('HUMAN')}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'HUMAN'
-                  ? 'bg-sky-500/20 text-sky-300 border-sky-400 ring-2 ring-sky-400/30'
-                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-sky-400"></span>
-              <span>Human (Blue)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTargetType('VEHICLE')}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'VEHICLE'
-                  ? 'bg-purple-500/20 text-purple-300 border-purple-400 ring-2 ring-purple-400/30'
-                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-purple-400"></span>
-              <span>Vehicle (Purple)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTargetType('BUILDING')}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'BUILDING' || selectedTargetType === 'STRUCTURAL_CRACK'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-400 ring-2 ring-amber-400/30'
-                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-amber-400"></span>
-              <span>Building (Orange)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTargetType('PLANT')}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'PLANT'
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400 ring-2 ring-emerald-400/30'
-                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-emerald-400"></span>
-              <span>Plant (Green)</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedTargetType('ANIMAL')}
-              className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
-                selectedTargetType === 'ANIMAL'
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-400 ring-2 ring-rose-400/30'
-                  : 'bg-[#182235] text-slate-400 border-[#29374d] hover:text-white'
-              }`}
-            >
-              <span className="w-3 h-3 rounded-full bg-rose-500"></span>
-              <span>Animal (Red)</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <div className="flex items-center gap-2 text-xs font-mono">
-              <span className="text-slate-400">Grid X (0-29):</span>
-              <input
-                type="number"
-                min="0"
-                max="29"
-                value={customX}
-                onChange={(e) => setCustomX(Math.max(0, Math.min(29, Number(e.target.value))))}
-                className="w-16 px-2 py-1 bg-[#0e1624] border border-[#29374d] rounded text-white font-mono text-center outline-none"
-              />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            onClick={() => onSendCommand('RTL')}
+            className="p-3 bg-[#121a28] hover:bg-[#1b263b] border border-[#29374d] hover:border-sky-500 rounded-xl text-left transition flex items-center gap-3"
+          >
+            <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center flex-shrink-0">
+              <RotateCcw className="w-4 h-4" />
             </div>
-
-            <div className="flex items-center gap-2 text-xs font-mono">
-              <span className="text-slate-400">Grid Y (0-29):</span>
-              <input
-                type="number"
-                min="0"
-                max="29"
-                value={customY}
-                onChange={(e) => setCustomY(Math.max(0, Math.min(29, Number(e.target.value))))}
-                className="w-16 px-2 py-1 bg-[#0e1624] border border-[#29374d] rounded text-white font-mono text-center outline-none"
-              />
+            <div>
+              <div className="text-xs font-bold text-white">Return to Base (RTL)</div>
+              <div className="text-[10px] text-slate-400 font-mono">Recall all 5 drones to pad</div>
             </div>
+          </button>
 
-            <button
-              onClick={handleDeployTarget}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Deploy Target At [{customX}, {customY}]</span>
-            </button>
+          <button
+            onClick={() => onSendCommand('RECHARGE')}
+            className="p-3 bg-[#121a28] hover:bg-[#1b263b] border border-[#29374d] hover:border-emerald-500 rounded-xl text-left transition flex items-center gap-3"
+          >
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white">Fast Fleet Recharge</div>
+              <div className="text-[10px] text-slate-400 font-mono">Restore battery to 100%</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSendCommand('CALIBRATE')}
+            className="p-3 bg-[#121a28] hover:bg-[#1b263b] border border-[#29374d] hover:border-indigo-500 rounded-xl text-left transition flex items-center gap-3"
+          >
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center flex-shrink-0">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white">IMU Sensor Zeroing</div>
+              <div className="text-[10px] text-slate-400 font-mono">Correct gyro drift</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSendCommand('RESET')}
+            className="p-3 bg-[#121a28] hover:bg-rose-950/40 border border-[#29374d] hover:border-rose-500 rounded-xl text-left transition flex items-center gap-3"
+          >
+            <div className="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white">Emergency Swarm Reset</div>
+              <div className="text-[10px] text-slate-400 font-mono">Full system reboot</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* REAL-TIME VERIFIED TARGETS MONITOR (ONLY VERIFIED / FOUND TARGETS) */}
+      <div className="bg-[#182235] border border-[#29374d] rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#29374d]">
+          <div>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-emerald-400" />
+              Real-Time Verified Targets Field Feed
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              100% synchronized with aerial drone sensor fusion. Only confirmed targets appear upon drone arrival.
+            </p>
           </div>
+          <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/30">
+            {Object.values(targets).filter((t) => t.found).length} Verified Found
+          </span>
         </div>
 
-        {/* Registered Targets List with Delete Option */}
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span>2. Active Target Registry & Deletion Deck:</span>
-            <span className="text-slate-400 text-[11px] font-mono">
-              Click &quot;Delete Target&quot; to permanently remove any target from the map.
-            </span>
-          </div>
-
-          {Object.keys(targets).length === 0 ? (
-            <div className="p-4 bg-[#0e1624] border border-[#29374d] rounded-xl text-center text-xs text-slate-400 font-mono">
-              No targets currently deployed on tactical grid.
+        {Object.values(targets).filter((t) => t.found).length === 0 ? (
+          <div className="py-10 px-4 bg-[#0e1624] border border-[#29374d] rounded-xl flex flex-col items-center justify-center text-center gap-3">
+            <div className="w-12 h-12 rounded-full border border-sky-500/30 bg-sky-500/10 flex items-center justify-center animate-pulse">
+              <Zap className="w-6 h-6 text-sky-400" />
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              {Object.values(targets).map((target) => {
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-white">Swarm Surveying Recon Grid</p>
+              <p className="text-xs text-slate-400 max-w-md">
+                Zero pre-set targets are exposed. As drones fly across coordinates and detect stranded victims or vehicles, verified dossiers will appear here in real-time.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Object.values(targets)
+              .filter((t) => t.found)
+              .map((target) => {
                 const prob = Math.min(
                   100,
                   Math.max(92, Math.round((target.confidence || 0.98) * 100))
@@ -508,12 +462,12 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
                 return (
                   <div
                     key={target.target_id}
-                    className="p-3 bg-[#121a28] border border-[#29374d] hover:border-slate-500 rounded-xl flex flex-col justify-between gap-2.5 transition"
+                    className="p-3.5 bg-[#121a28] border border-emerald-500/40 rounded-xl flex flex-col justify-between gap-2.5 transition shadow-sm animate-fade-in"
                   >
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-xs text-white font-mono flex items-center gap-1.5">
-                          <span>{target.target_id}</span>
+                          <span className="text-sky-400">{target.target_id}</span>
                           <span
                             className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
                               target.type === 'HUMAN'
@@ -529,42 +483,37 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
                           </span>
                         </span>
 
-                        <span
-                          className={`text-[10px] font-mono font-semibold ${
-                            target.found ? 'text-emerald-400' : 'text-slate-400'
-                          }`}
-                        >
-                          {target.found ? '✓ FOUND' : 'UNFOUND'}
+                        <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                          VERIFIED
                         </span>
                       </div>
 
-                      <div className="text-[10px] font-mono text-slate-400 mt-2 space-y-1">
-                        <div className="flex items-center gap-1 text-slate-300">
+                      <div className="text-[10px] font-mono text-slate-300 mt-2 space-y-1">
+                        <div className="flex items-center gap-1 text-slate-200 truncate">
                           <MapPin className="w-3 h-3 text-sky-400 flex-shrink-0" />
                           <span className="truncate">{geoCoord}</span>
                         </div>
-                        <div>
-                          Grid: [{target.x}, {target.y}] • Assigned:{' '}
-                          <span className="text-sky-300 font-semibold">
-                            {target.assigned_drone || 'Unassigned'}
-                          </span>
+                        <div className="flex justify-between text-slate-400">
+                          <span>Grid Cell: [{target.x}, {target.y}]</span>
+                          <span>By: <strong className="text-sky-300">{target.assigned_drone || 'D1'}</strong></span>
                         </div>
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => onDeleteTarget(target.target_id)}
-                      className="w-full py-1.5 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete Target</span>
-                    </button>
+                    {onDeleteTarget && (
+                      <button
+                        onClick={() => onDeleteTarget(target.target_id)}
+                        className="w-full py-1.5 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete Target</span>
+                      </button>
+                    )}
                   </div>
                 );
               })}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

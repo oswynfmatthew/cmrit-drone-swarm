@@ -1165,29 +1165,131 @@ CALAMITY_SCENARIOS.forEach((scenario) => {
   });
 });
 
-// Intelligent Automated Computer Vision Scanner for user-uploaded custom images
-// Scans image pixels, computes localized spatial contrast and chromatic anomalies,
-// and maps target positions [0..29, 0..19] across the 5 swarm search zones!
-// All targets start completely INVISIBLE (found: false) so the image looks 100% natural!
-export function analyzeUploadedImageForTargets(
-  imgElement: HTMLImageElement,
-  onComplete: (targets: Target[]) => void
-): void {
+// Intelligent Automated Computer Vision & Gemini Vision Scanner for reconnaissance imagery
+// Analyzes the uploaded aerial/satellite image across the discrete 600-cell coordinate grid (30x20)
+// and maps detected entities ('human', 'vehicle', 'boat', 'animal') directly to [col, row, cell_id]
+export async function detectTargetsWithGeminiVision(
+  imageData: string
+): Promise<Target[]> {
+  try {
+    const response = await fetch('/api/gemini/detect-targets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: imageData }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn('Gemini Vision API returned status', response.status, errText);
+      return [];
+    }
+
+    const data = await response.json();
+    if (!data || !Array.isArray(data.detections) || data.detections.length === 0) {
+      return [];
+    }
+
+    const cellWidth = CELL;
+    const cellHeight = CELL;
+
+    const targets: Target[] = data.detections.map((d: any, idx: number) => {
+      const col = Math.max(0, Math.min(29, Number(d.col) || 0));
+      const row = Math.max(0, Math.min(19, Number(d.row) || 0));
+      const cell_id =
+        typeof d.cell_id === 'number' && d.cell_id >= 0 && d.cell_id < 600
+          ? d.cell_id
+          : row * 30 + col;
+
+      const target_screen_x = col * cellWidth + cellWidth / 2;
+      const target_screen_y = row * cellHeight + cellHeight / 2;
+
+      const rawLabel = String(d.label || 'human').toLowerCase();
+      let type: TargetType = 'HUMAN';
+      let priority: 'HIGH' | 'MEDIUM' | 'LOW' = 'HIGH';
+      let labelText = 'Rooftop Survivor';
+      let descText = 'Stranded human detected via Gemini Vision SAR model on 600-cell grid';
+
+      if (rawLabel.includes('vehicle') || rawLabel.includes('car') || rawLabel.includes('truck')) {
+        type = 'VEHICLE';
+        priority = 'MEDIUM';
+        labelText = 'Submerged / Stranded Vehicle';
+        descText = 'Vehicle signature isolated in evacuation grid';
+      } else if (rawLabel.includes('boat') || rawLabel.includes('dinghy') || rawLabel.includes('raft')) {
+        type = 'BOAT';
+        priority = 'HIGH';
+        labelText = 'Watercraft / Rescue Boat';
+        descText = 'Rescue craft or vessel identified in water sector';
+      } else if (rawLabel.includes('animal') || rawLabel.includes('livestock') || rawLabel.includes('sheep')) {
+        type = 'ANIMAL';
+        priority = 'MEDIUM';
+        labelText = 'Stranded Animal / Livestock';
+        descText = 'Domestic or farm animal isolated by calamity';
+      } else {
+        type = 'HUMAN';
+        priority = 'HIGH';
+        labelText = 'Stranded Survivor';
+        descText = 'Person requiring urgent drone swarm extraction';
+      }
+
+      const conf =
+        typeof d.confidence === 'number'
+          ? Math.max(0.5, Math.min(1.0, d.confidence))
+          : type === 'VEHICLE'
+          ? 0.95
+          : 0.98;
+
+      return {
+        target_id: `T${idx + 1}`,
+        x: col,
+        y: row,
+        col,
+        row,
+        cell_id,
+        target_screen_x,
+        target_screen_y,
+        type,
+        priority,
+        label: labelText,
+        description: descText,
+        found: false,
+        confidence: conf,
+        assigned_drone: null,
+        rgbConfidence: 0,
+        lidarConfidence: 0,
+        kalmanFusedConfidence: 0,
+        geoCoordinates: calculateGeoCoordinates(col, row),
+        bbox: {
+          x: col * cellWidth - 4,
+          y: row * cellHeight - 4,
+          w: cellWidth + 8,
+          h: cellHeight + 8,
+        },
+      };
+    });
+
+    return targets;
+  } catch (err) {
+    console.error('Failed to run Gemini Vision detection:', err);
+    return [];
+  }
+}
+
+// Fallback Computer Vision Scanner if Gemini Vision API is unreachable
+function fallbackContrastScanner(
+  imgElement: HTMLImageElement
+): Target[] {
   const canvas = document.createElement('canvas');
   canvas.width = 30; // Grid W
   canvas.height = 20; // Grid H
   const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    onComplete([]);
-    return;
-  }
+  if (!ctx) return [];
 
   ctx.drawImage(imgElement, 0, 0, 30, 20);
   const imgData = ctx.getImageData(0, 0, 30, 20);
   const data = imgData.data;
 
-  // We want to distribute targets across the 5 zones (Z1 to Z5)
-  // so each drone's autonomous sweep has objectives to discover!
   const zoneTargets: { x: number; y: number; score: number }[][] = [[], [], [], [], []];
 
   for (let y = 2; y < 18; y++) {
@@ -1225,14 +1327,12 @@ export function analyzeUploadedImageForTargets(
 
   const selectedPoints: { x: number; y: number }[] = [];
 
-  // Pick the most salient point in each zone
   for (let z = 0; z < 5; z++) {
     const list = zoneTargets[z];
     list.sort((a, b) => b.score - a.score);
     if (list.length > 0) {
       selectedPoints.push({ x: list[0].x, y: list[0].y });
     } else {
-      // Fallback in zone
       selectedPoints.push({ x: z * 6 + 3, y: 6 + (z % 3) * 4 });
     }
   }
@@ -1268,25 +1368,31 @@ export function analyzeUploadedImageForTargets(
       priority: 'MEDIUM',
     },
     {
-      type: 'STRUCTURAL_CRACK',
-      label: 'Critical Structural Rupture / Fissure',
-      desc: 'Severe concrete fracture or ground fault breach identified.',
+      type: 'BOAT',
+      label: 'Rescue Boat / Float Craft',
+      desc: 'Emergency watercraft detected in flood evacuation zone.',
       priority: 'HIGH',
     },
   ];
 
-  const targets: Target[] = selectedPoints.map((pt, idx) => {
+  return selectedPoints.map((pt, idx) => {
     const tmpl = categoryTemplates[idx % categoryTemplates.length];
+    const cell_id = pt.y * 30 + pt.x;
     return {
       target_id: `T${idx + 1}`,
       x: pt.x,
       y: pt.y,
+      col: pt.x,
+      row: pt.y,
+      cell_id,
+      target_screen_x: pt.x * CELL + CELL / 2,
+      target_screen_y: pt.y * CELL + CELL / 2,
       type: tmpl.type,
       priority: tmpl.priority,
       label: tmpl.label,
       description: tmpl.desc,
-      found: false, // 100% INVISIBLE UNTIL DRONES SURVEY THIS CELL!
-      confidence: tmpl.type === 'VEHICLE' ? 1.0 : tmpl.type === 'HUMAN' ? 0.98 : 0.97,
+      found: false,
+      confidence: tmpl.type === 'VEHICLE' ? 0.95 : 0.98,
       assigned_drone: null,
       rgbConfidence: 0,
       lidarConfidence: 0,
@@ -1300,6 +1406,42 @@ export function analyzeUploadedImageForTargets(
       },
     };
   });
+}
 
-  onComplete(targets);
+// Main image analysis entry point: tries Gemini Vision SAR model first, falls back if offline
+export function analyzeUploadedImageForTargets(
+  imgElement: HTMLImageElement,
+  onComplete: (targets: Target[]) => void
+): void {
+  // Convert img to dataURL for Gemini Vision ingestion
+  let dataUrl = imgElement.src;
+  if (!dataUrl.startsWith('data:')) {
+    try {
+      const c = document.createElement('canvas');
+      c.width = imgElement.naturalWidth || imgElement.width || 960;
+      c.height = imgElement.naturalHeight || imgElement.height || 640;
+      const ctx = c.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(imgElement, 0, 0, c.width, c.height);
+        dataUrl = c.toDataURL('image/jpeg', 0.9);
+      }
+    } catch {
+      // tainted canvas or cross-origin fallback
+      dataUrl = imgElement.src;
+    }
+  }
+
+  detectTargetsWithGeminiVision(dataUrl)
+    .then((geminiTargets) => {
+      if (geminiTargets.length > 0) {
+        onComplete(geminiTargets);
+      } else {
+        const fallback = fallbackContrastScanner(imgElement);
+        onComplete(fallback);
+      }
+    })
+    .catch(() => {
+      const fallback = fallbackContrastScanner(imgElement);
+      onComplete(fallback);
+    });
 }

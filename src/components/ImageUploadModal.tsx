@@ -13,6 +13,9 @@ import {
   Waves,
   Building2,
   ShieldAlert,
+  Cpu,
+  Loader2,
+  Crosshair,
 } from 'lucide-react';
 
 interface ImageUploadModalProps {
@@ -124,7 +127,13 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
         ? 'GOOGLE_MAPS'
         : 'SATELLITE_PRESET';
 
-    onApplyImage(previewUrl, imageName || 'Custom Satellite Recon', sourceType, detectedTargets);
+    const cleanTargets = (detectedTargets || []).map((t) => ({
+      ...t,
+      found: false,
+      assigned_drone: null,
+    }));
+
+    onApplyImage(previewUrl, imageName || 'Custom Satellite Recon', sourceType, cleanTargets);
     onClose();
   };
 
@@ -462,22 +471,48 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
             </div>
           )}
 
-          {/* Active Image Inspection Card (Shows clean photo, zero artificial markers!) */}
+          {/* Active Image Inspection Card with 600-Cell Target Integration */}
           {previewUrl && (
             <div className="p-4 bg-[#121a28] border border-[#29374d] rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-slate-200 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   Selected Scene: <span className="text-white font-bold">{imageName}</span>
                 </span>
 
-                <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-400">
-                  <EyeOff className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{detectedTargets.length} Objectives Mapped (Hidden Until Drones Survey)</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => previewUrl && runDetectionOnUrl(previewUrl)}
+                    disabled={analyzing || !previewUrl}
+                    className="px-2.5 py-1 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+                    title="Scan image across 600-cell grid with Gemini Vision API"
+                  >
+                    {analyzing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                    ) : (
+                      <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                    )}
+                    <span>{analyzing ? 'Scanning 600 Cells...' : 'Scan with Gemini Vision AI'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-400">
+                    <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{detectedTargets.length} Objectives Mapped</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Realistic Clean Photo Preview (No premature yellow markers!) */}
+              {/* Gemini Vision API Scan Progress Banner */}
+              {analyzing && (
+                <div className="p-3 bg-cyan-950/40 border border-cyan-500/50 rounded-lg flex items-center gap-2.5 text-xs text-cyan-300 font-mono animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
+                  <div>
+                    <span className="font-bold text-white">Gemini Vision AI Engine:</span> Analyzing discrete 600-cell coordinate grid (cols 0–29, rows 0–19, cells 0–599) for humans, vehicles, boats, and animals...
+                  </div>
+                </div>
+              )}
+
+              {/* Realistic Clean Photo Preview */}
               <div className="relative w-full h-52 rounded-lg overflow-hidden border border-[#29374d] bg-black">
                 <img
                   src={previewUrl}
@@ -487,15 +522,79 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
 
                 <div className="absolute bottom-2 left-2 px-2.5 py-1 rounded bg-black/80 backdrop-blur text-[11px] font-mono text-slate-300 border border-white/20 flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>Authentic Calamity Image • 5 Swarm Search Zones Ready</span>
+                  <span>600-Cell Discrete Grid Ready • Swarm Waypoints Syncing to Occupied Cells</span>
                 </div>
               </div>
+
+              {/* Detected Targets Breakdown across the 600-cell coordinate space */}
+              {detectedTargets.length > 0 && (
+                <div className="p-3 bg-[#0e1624] rounded-lg border border-[#222f42] space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-slate-400">
+                      Detected Entities ({detectedTargets.length} total across 600 cells):
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-cyan-400 font-bold">
+                        {detectedTargets.filter((t) => t.type === 'HUMAN').length} Humans [Cyan]
+                      </span>
+                      <span className="text-purple-400 font-bold">
+                        {detectedTargets.filter((t) => t.type === 'VEHICLE').length} Vehicles [Purple]
+                      </span>
+                      {detectedTargets.some((t) => t.type === 'BOAT') && (
+                        <span className="text-sky-400 font-bold">
+                          {detectedTargets.filter((t) => t.type === 'BOAT').length} Boats [Blue]
+                        </span>
+                      )}
+                      {detectedTargets.some((t) => t.type === 'ANIMAL') && (
+                        <span className="text-rose-400 font-bold">
+                          {detectedTargets.filter((t) => t.type === 'ANIMAL').length} Animals [Red]
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Discrete target chips with exact cell coordinates */}
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                    {detectedTargets.slice(0, 16).map((t) => {
+                      const col = t.col !== undefined ? t.col : t.x;
+                      const row = t.row !== undefined ? t.row : t.y;
+                      const cell_id = t.cell_id !== undefined ? t.cell_id : row * 30 + col;
+                      const conf = Math.round((t.confidence || 0.98) * 100);
+
+                      const badgeColor =
+                        t.type === 'HUMAN'
+                          ? 'border-cyan-500/40 text-cyan-300 bg-cyan-950/30'
+                          : t.type === 'VEHICLE'
+                          ? 'border-purple-500/40 text-purple-300 bg-purple-950/30'
+                          : t.type === 'BOAT'
+                          ? 'border-sky-500/40 text-sky-300 bg-sky-950/30'
+                          : 'border-rose-500/40 text-rose-300 bg-rose-950/30';
+
+                      return (
+                        <span
+                          key={t.target_id}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 ${badgeColor}`}
+                        >
+                          <Crosshair className="w-2.5 h-2.5" />
+                          <span className="font-bold">{t.type} [{conf}%]</span>
+                          <span className="opacity-70">cell #{cell_id} ({col},{row})</span>
+                        </span>
+                      );
+                    })}
+                    {detectedTargets.length > 16 && (
+                      <span className="text-[10px] font-mono text-slate-400 self-center">
+                        +{detectedTargets.length - 16} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Objectives details note */}
               <div className="p-3 bg-[#0e1624] rounded-lg border border-[#222f42] text-xs text-slate-400 flex items-start gap-2">
                 <ShieldAlert className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold text-slate-300">Autonomous Target Revelation:</span> When you deploy this image, it appears completely unmarred on the simulation screen. Drones D1–D5 will autonomously search their designated zones. As soon as a drone flies over a survivor or hazard, it will highlight and circle that target in real-time. Upon full survey completion, all discovered objectives remain highlighted on the picture.
+                  <span className="font-semibold text-slate-300">Swarm Pathfinding Waypoint Ingestion:</span> Drone swarm zones Z1–Z5 will route directly to each detected cell coordinate ({detectedTargets.length} waypoints prioritized). Targets are revealed with corner brackets and class badges as drones survey each occupied cell.
                 </div>
               </div>
             </div>
