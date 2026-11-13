@@ -190,21 +190,47 @@ export function astar(
   return [];
 }
 
-// Generate lawnmower zone tasks
+// Generate lawnmower zone tasks with direct target waypoints
 export function makeZoneTasks(
   width: number,
   height: number,
   zoneCount: number,
-  blocked: Set<string>
+  blocked: Set<string>,
+  occupiedTargets?: (Target | Point)[]
 ): Task[] {
   const zones: Task[] = [];
   const zoneWidth = Math.floor(width / zoneCount);
+
+  // Group occupied target coordinates by assigned zone slice
+  const targetMapByZone: Record<number, Point[]> = { 0: [], 1: [], 2: [], 3: [], 4: [] };
+
+  if (occupiedTargets && occupiedTargets.length > 0) {
+    occupiedTargets.forEach((item) => {
+      const col = Array.isArray(item) ? item[0] : (item.col !== undefined ? item.col : item.x);
+      const row = Array.isArray(item) ? item[1] : (item.row !== undefined ? item.row : item.y);
+      const zIdx = Math.max(0, Math.min(zoneCount - 1, Math.floor(col / zoneWidth)));
+      if (!targetMapByZone[zIdx].some((p) => p[0] === col && p[1] === row)) {
+        targetMapByZone[zIdx].push([col, row]);
+      }
+    });
+  }
 
   for (let z = 0; z < zoneCount; z++) {
     const x0 = z * zoneWidth;
     const x1 = z === zoneCount - 1 ? width : (z + 1) * zoneWidth;
     const cells: Point[] = [];
+    const cellSet = new Set<string>();
 
+    // 1. Set drone swarm pathfinding waypoints directly to the occupied cell_id coordinates!
+    const targetPoints = targetMapByZone[z] || [];
+    for (const pt of targetPoints) {
+      if (!blocked.has(pointKey(pt))) {
+        cells.push(pt);
+        cellSet.add(pointKey(pt));
+      }
+    }
+
+    // 2. Complete the full lawnmower survey covering all remaining zone cells
     for (let y = 0; y < height; y++) {
       const rowX: number[] = [];
       if (y % 2 === 0) {
@@ -214,8 +240,10 @@ export function makeZoneTasks(
       }
 
       for (const x of rowX) {
-        if (!blocked.has(pointKey([x, y]))) {
+        const pk = pointKey([x, y]);
+        if (!blocked.has(pk) && !cellSet.has(pk)) {
           cells.push([x, y]);
+          cellSet.add(pk);
         }
       }
     }
@@ -972,12 +1000,19 @@ export function detectTargetsWithSensorFusion(
     for (const drone of Object.values(drones)) {
       if (!drone.healthy) continue;
 
-      const dx = drone.x / cellSize - (target.x + 0.5);
-      const dy = drone.y / cellSize - (target.y + 0.5);
+      const targetCol = target.col !== undefined ? target.col : target.x;
+      const targetRow = target.row !== undefined ? target.row : target.y;
+
+      const droneCellX = Math.floor(drone.x / cellSize);
+      const droneCellY = Math.floor(drone.y / cellSize);
+      const isExactCell = droneCellX === targetCol && droneCellY === targetRow;
+
+      const dx = drone.x / cellSize - (targetCol + 0.5);
+      const dy = drone.y / cellSize - (targetRow + 0.5);
       const d = Math.hypot(dx, dy);
 
-      // Detection threshold: within 1.4 cells (direct downward camera cone & sensor footprint over target cell)
-      if (d <= 1.4) {
+      // Detection threshold: only when drone physically reaches the exact target grid cell
+      if (isExactCell || d <= 0.85) {
         // Multi-modal sensor calculations (Slide 6 from PDF):
         // 1. RGB Optical: High resolution, calibrated to ground truth accuracy
         const opticalClarity = Math.max(0.7, 1.0 - darknessLevel * 0.3);

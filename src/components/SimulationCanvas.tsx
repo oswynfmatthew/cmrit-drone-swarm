@@ -331,88 +331,113 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         });
       }
 
-      // 10. Draw Detected Targets DIRECTLY ON THE IMAGE with Tactical Highlights
+      // 10. Draw Detected Targets DIRECTLY ON THE 600-CELL GRID
+      // Grid formulas:
+      // cell_width = canvas_width / 30, cell_height = canvas_height / 20
+      // target_screen_x = detection.col * cell_width + (cell_width / 2)
+      // target_screen_y = detection.row * cell_height + (cell_height / 2)
+      const cell_width = WIDTH / 30; // 32px
+      const cell_height = HEIGHT / 20; // 32px
+
       Object.values(targets).forEach((target) => {
-        const tx = target.x * CELL + CELL / 2;
-        const ty = target.y * CELL + CELL / 2;
+        const col = target.col !== undefined ? target.col : target.x;
+        const row = target.row !== undefined ? target.row : target.y;
 
-        // Targets ONLY appear when actually pinpointed and verified by a scanning drone in the field
-        const isFound = target.found;
+        const target_screen_x =
+          target.target_screen_x !== undefined
+            ? target.target_screen_x
+            : col * cell_width + cell_width / 2;
+        const target_screen_y =
+          target.target_screen_y !== undefined
+            ? target.target_screen_y
+            : row * cell_height + cell_height / 2;
 
-        if (isFound) {
-          // Detected Target on Image: Pulsing Tactical Rescue Circle & Corner Brackets
-          const pulse = (Math.sin(time * 0.008) + 1) * 3;
-
-          // Color scheme specified: Human=Blue, Vehicle=Purple, Animal=Red, Plant=Emerald, Damaged Building=Orange
+        // STRICT REQUIREMENT: Absolutely do NOT show any target prior to the simulation running!
+        // Only when the simulation starts running and the drone comes in the exact grid where
+        // the target is present, only then and there will it actually show the target being found.
+        // Initially prior to the simulation being run there should not be a single target highlighted!
+        if (!target.found) {
+          return;
+        }
+          // Color specifications:
+          // Human: Cyan (#22d3ee)
+          // Vehicle: Purple (#c084fc)
+          // Boat: Cyan-Blue (#38bdf8)
+          // Animal: Red (#ef4444)
+          // Plant: Emerald (#10b981)
+          // Structural / Building: Orange (#f59e0b)
           const themeColor =
             target.type === 'HUMAN'
-              ? '#38bdf8' // Blue
+              ? '#22d3ee' // Cyan
               : target.type === 'VEHICLE'
               ? '#c084fc' // Purple
+              : target.type === 'BOAT'
+              ? '#38bdf8' // Cyan-Blue
               : target.type === 'ANIMAL'
               ? '#ef4444' // Red
               : target.type === 'PLANT'
               ? '#10b981' // Emerald
-              : '#f59e0b'; // Orange (Damaged Building / Crack)
+              : '#f59e0b'; // Orange
 
-          // Outer pulsing rescue ring
+          // 1. Draw corner targeting brackets at [detection.col * cell_width, detection.row * cell_height]
+          const cellX = col * cell_width;
+          const cellY = row * cell_height;
+          const bLen = 8; // Bracket arm length
+
           ctx.strokeStyle = themeColor;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(tx, ty, 18 + pulse, 0, Math.PI * 2);
-          ctx.stroke();
-
-          // Subtle glow fill
-          ctx.fillStyle = `${themeColor}33`;
-          ctx.beginPath();
-          ctx.arc(tx, ty, 14, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Reticle crosshair ticks
-          ctx.strokeStyle = themeColor;
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(tx - 26, ty);
-          ctx.lineTo(tx - 20, ty);
-          ctx.moveTo(tx + 20, ty);
-          ctx.lineTo(tx + 26, ty);
-          ctx.moveTo(tx, ty - 26);
-          ctx.lineTo(tx, ty - 20);
-          ctx.moveTo(tx, ty + 20);
-          ctx.lineTo(tx, ty + 26);
-          ctx.stroke();
-
-          // Tactical Corner brackets
-          const bSize = 22;
-          const cLen = 7;
-          ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 2;
 
-          // Top-left
+          // Top-Left Corner [detection.col * cell_width, detection.row * cell_height]
           ctx.beginPath();
-          ctx.moveTo(tx - bSize, ty - bSize + cLen);
-          ctx.lineTo(tx - bSize, ty - bSize);
-          ctx.lineTo(tx - bSize + cLen, ty - bSize);
-          // Top-right
-          ctx.moveTo(tx + bSize - cLen, ty - bSize);
-          ctx.lineTo(tx + bSize, ty - bSize);
-          ctx.lineTo(tx + bSize, ty - bSize + cLen);
-          // Bottom-left
-          ctx.moveTo(tx - bSize, ty + bSize - cLen);
-          ctx.lineTo(tx - bSize, ty + bSize);
-          ctx.lineTo(tx - bSize + cLen, ty + bSize);
-          // Bottom-right
-          ctx.moveTo(tx + bSize - cLen, ty + bSize);
-          ctx.lineTo(tx + bSize, ty + bSize);
-          ctx.lineTo(tx + bSize, ty + bSize - cLen);
+          ctx.moveTo(cellX, cellY + bLen);
+          ctx.lineTo(cellX, cellY);
+          ctx.lineTo(cellX + bLen, cellY);
+
+          // Top-Right Corner [detection.col * cell_width + cell_width, detection.row * cell_height]
+          ctx.moveTo(cellX + cell_width - bLen, cellY);
+          ctx.lineTo(cellX + cell_width, cellY);
+          ctx.lineTo(cellX + cell_width, cellY + bLen);
+
+          // Bottom-Left Corner [detection.col * cell_width, detection.row * cell_height + cell_height]
+          ctx.moveTo(cellX, cellY + cell_height - bLen);
+          ctx.lineTo(cellX, cellY + cell_height);
+          ctx.lineTo(cellX + bLen, cellY + cell_height);
+
+          // Bottom-Right Corner [detection.col * cell_width + cell_width, detection.row * cell_height + cell_height]
+          ctx.moveTo(cellX + cell_width - bLen, cellY + cell_height);
+          ctx.lineTo(cellX + cell_width, cellY + cell_height);
+          ctx.lineTo(cellX + cell_width, cellY + cell_height - bLen);
           ctx.stroke();
 
-          // Tactical Badge Label with Exact Target Type and Probability in brackets [98%]
-          const typeLabel =
+          // Active grid cell subtle highlight wash
+          ctx.fillStyle = `${themeColor}33`;
+          ctx.fillRect(cellX + 1, cellY + 1, cell_width - 2, cell_height - 2);
+
+          // Central pulsing rescue reticle when surveyed / found by drone
+          const pulse = (Math.sin(time * 0.008) + 1) * 2.5;
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.arc(target_screen_x, target_screen_y, 10 + pulse, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Center crosshair ticks
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(target_screen_x - 5, target_screen_y);
+          ctx.lineTo(target_screen_x + 5, target_screen_y);
+          ctx.moveTo(target_screen_x, target_screen_y - 5);
+          ctx.lineTo(target_screen_x, target_screen_y + 5);
+          ctx.stroke();
+
+          // 2. Render target label badge ("HUMAN [98%]" in cyan, "VEHICLE [95%]" in purple)
+          const typeUpper =
             target.type === 'HUMAN'
               ? 'HUMAN'
               : target.type === 'VEHICLE'
               ? 'VEHICLE'
+              : target.type === 'BOAT'
+              ? 'BOAT'
               : target.type === 'ANIMAL'
               ? 'ANIMAL'
               : target.type === 'PLANT'
@@ -423,24 +448,30 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             100,
             Math.max(50, Math.round((target.confidence || 0.98) * 100))
           );
-          const label = `${typeLabel} [${probPercent}%]`;
+          const badgeText = `${typeUpper} [${probPercent}%]`;
 
           ctx.font = 'bold 9.5px monospace';
-          const textMetric = ctx.measureText(label);
-          const badgeW = Math.max(86, textMetric.width + 14);
-          ctx.fillStyle = '#0e1624';
-          ctx.fillRect(tx - badgeW / 2, ty - bSize - 19, badgeW, 16);
-          ctx.strokeStyle = themeColor;
-          ctx.lineWidth = 1.4;
-          ctx.strokeRect(tx - badgeW / 2, ty - bSize - 19, badgeW, 16);
+          const textMetric = ctx.measureText(badgeText);
+          const badgeW = Math.max(76, textMetric.width + 12);
+          const badgeH = 15;
+          const badgeX = cellX + cell_width / 2 - badgeW / 2;
+          const badgeY = cellY - badgeH - 3;
 
-          ctx.fillStyle = '#ffffff';
+          // High-contrast dark badge backing
+          ctx.fillStyle = '#090e17';
+          ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+
+          // Crisp colored outline matching class
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+
+          // Label text in theme color (cyan for HUMAN, purple for VEHICLE)
+          ctx.fillStyle = themeColor;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(label, tx, ty - bSize - 11);
-        }
-        // If not found yet: Completely invisible! No markers rendered.
-      });
+          ctx.fillText(badgeText, cellX + cell_width / 2, badgeY + badgeH / 2 + 0.5);
+        });
 
       // 11. Draw Radar Cones around active drones
       if (showRadar) {
@@ -674,11 +705,14 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
-    // 1. Check if an existing target was clicked
+    // 1. Check if an existing target was clicked (only if it has been discovered by a drone)
     let clickedTargetId: string | null = null;
     for (const target of Object.values(targets)) {
-      const tx = target.x * CELL + CELL / 2;
-      const ty = target.y * CELL + CELL / 2;
+      if (!target.found) continue;
+      const col = target.col !== undefined ? target.col : target.x;
+      const row = target.row !== undefined ? target.row : target.y;
+      const tx = target.target_screen_x !== undefined ? target.target_screen_x : col * CELL + CELL / 2;
+      const ty = target.target_screen_y !== undefined ? target.target_screen_y : row * CELL + CELL / 2;
       const dist = Math.hypot(clickX - tx, clickY - ty);
       if (dist <= 22) {
         clickedTargetId = target.target_id;
@@ -1046,11 +1080,11 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             <div className="absolute top-2 right-2 bg-[#0e1624]/95 backdrop-blur border border-sky-500/50 px-3 py-2 rounded-xl shadow-2xl flex items-center gap-3 text-xs z-30 font-mono">
               <div>
                 <span className="font-bold text-white">{targets[inspectedTargetId].target_id}: </span>
-                <span className="text-sky-300 font-bold">
+                <span className="text-cyan-300 font-bold">
                   {targets[inspectedTargetId].type} [{Math.round((targets[inspectedTargetId].confidence || 0.98) * 100)}%]
                 </span>
-                <span className="text-slate-400 ml-1">
-                  [{targets[inspectedTargetId].x}, {targets[inspectedTargetId].y}]
+                <span className="text-slate-400 ml-1.5 text-[10px]">
+                  Grid ({targets[inspectedTargetId].col ?? targets[inspectedTargetId].x}, {targets[inspectedTargetId].row ?? targets[inspectedTargetId].y}) • Cell #{targets[inspectedTargetId].cell_id ?? ((targets[inspectedTargetId].row ?? targets[inspectedTargetId].y) * 30 + (targets[inspectedTargetId].col ?? targets[inspectedTargetId].x))}
                 </span>
               </div>
               <button

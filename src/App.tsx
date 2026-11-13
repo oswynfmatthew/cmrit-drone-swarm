@@ -136,14 +136,14 @@ export const App: React.FC = () => {
       // In satellite image mode, clear static rock obstacles so drones can freely survey the full image
       const openBlocked = new Set<string>();
       blockedRef.current = openBlocked;
-      const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, openBlocked);
+      const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, openBlocked, detectedTargets);
       setTasks(newTasks);
 
       // If computer vision detected targets on the image, map them as the new mission objectives!
       if (detectedTargets && detectedTargets.length > 0) {
         const targetMap: Record<string, Target> = {};
         detectedTargets.forEach((t) => {
-          targetMap[t.target_id] = t;
+          targetMap[t.target_id] = { ...t, found: false, assigned_drone: null };
         });
         setTargets(targetMap);
         logEvent(
@@ -211,7 +211,7 @@ export const App: React.FC = () => {
       });
     }
 
-    const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, newBlocked);
+    const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, newBlocked, Object.values(newTargets));
     const newMoving = createMovingObstacles();
 
     setDrones(newDrones);
@@ -429,10 +429,19 @@ export const App: React.FC = () => {
           ? 'MEDIUM'
           : 'LOW');
 
+      const cell_id = cellY * 30 + cellX;
+      const target_screen_x = cellX * CELL + CELL / 2;
+      const target_screen_y = cellY * CELL + CELL / 2;
+
       currentTargets[targetId] = {
         target_id: targetId,
         x: cellX,
         y: cellY,
+        col: cellX,
+        row: cellY,
+        cell_id,
+        target_screen_x,
+        target_screen_y,
         type,
         priority: targetPriority,
         label: label || `${type} Objective`,
