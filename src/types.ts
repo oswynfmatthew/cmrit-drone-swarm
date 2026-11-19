@@ -44,6 +44,7 @@ export interface Target {
   kalmanFusedConfidence: number;
   bbox?: { x: number; y: number; w: number; h: number };
   geoCoordinates?: string; // e.g. "34.0538° N, 118.2415° W"
+  discoveredAt?: number; // timestamp when discovered by drone
 }
 
 export interface GeminiVisionDetection {
