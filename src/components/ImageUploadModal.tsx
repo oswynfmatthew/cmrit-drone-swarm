@@ -38,6 +38,7 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(CALAMITY_SCENARIOS[0].imageUrl);
   const [imageName, setImageName] = useState<string>(CALAMITY_SCENARIOS[0].title);
   const [analyzing, setAnalyzing] = useState<boolean>(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [detectedTargets, setDetectedTargets] = useState<Target[]>(CALAMITY_SCENARIOS[0].targets);
 
   // Google Maps inputs
@@ -65,15 +66,23 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
 
   const runDetectionOnUrl = (url: string) => {
     setAnalyzing(true);
+    setScanError(null);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      analyzeUploadedImageForTargets(img, (targets) => {
-        setDetectedTargets(targets);
-        setAnalyzing(false);
-      });
+      analyzeUploadedImageForTargets(
+        img,
+        (targets) => {
+          setDetectedTargets(targets);
+          setAnalyzing(false);
+        },
+        (errMsg) => {
+          setScanError(errMsg);
+        }
+      );
     };
     img.onerror = () => {
+      setScanError('Unable to load image for Gemini Vision analysis.');
       setAnalyzing(false);
     };
     img.src = url;
@@ -507,7 +516,17 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
                 <div className="p-3 bg-cyan-950/40 border border-cyan-500/50 rounded-lg flex items-center gap-2.5 text-xs text-cyan-300 font-mono animate-pulse">
                   <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
                   <div>
-                    <span className="font-bold text-white">Gemini Vision AI Engine:</span> Analyzing discrete 600-cell coordinate grid (cols 0–29, rows 0–19, cells 0–599) for humans, vehicles, boats, and animals...
+                    <span className="font-bold text-white">High-Recall Multi-Pass Vision SAR Engine:</span> Running full-frame + forensic submerged-vehicle sweep + 4x zoomed quadrant crops across 600 cells (cols 0–29, rows 0–19) for humans, animals, and half-submerged vehicles...
+                  </div>
+                </div>
+              )}
+
+              {/* Gemini Vision API Error Banner */}
+              {scanError && !analyzing && (
+                <div className="p-3 bg-rose-950/50 border border-rose-500/60 rounded-lg flex items-center gap-2.5 text-xs text-rose-200 font-mono">
+                  <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                  <div>
+                    <span className="font-bold text-rose-300">Vision Scan Error:</span> {scanError}
                   </div>
                 </div>
               )}
@@ -554,8 +573,8 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
                   </div>
 
                   {/* Discrete target chips with exact cell coordinates */}
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
-                    {detectedTargets.slice(0, 16).map((t) => {
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pt-1">
+                    {detectedTargets.map((t) => {
                       const col = t.col !== undefined ? t.col : t.x;
                       const row = t.row !== undefined ? t.row : t.y;
                       const cell_id = t.cell_id !== undefined ? t.cell_id : row * 30 + col;
@@ -568,6 +587,8 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
                           ? 'border-purple-500/40 text-purple-300 bg-purple-950/30'
                           : t.type === 'BOAT'
                           ? 'border-sky-500/40 text-sky-300 bg-sky-950/30'
+                          : t.type === 'STRUCTURAL_CRACK' || t.type === 'ANOMALY'
+                          ? 'border-amber-500/40 text-amber-300 bg-amber-950/30'
                           : 'border-rose-500/40 text-rose-300 bg-rose-950/30';
 
                       return (
@@ -581,11 +602,6 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
                         </span>
                       );
                     })}
-                    {detectedTargets.length > 16 && (
-                      <span className="text-[10px] font-mono text-slate-400 self-center">
-                        +{detectedTargets.length - 16} more
-                      </span>
-                    )}
                   </div>
                 </div>
               )}

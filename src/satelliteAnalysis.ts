@@ -1,5 +1,5 @@
 import { Target, TargetType } from './types';
-import { CELL } from './swarmEngine';
+import { CELL, WIDTH, HEIGHT } from './swarmEngine';
 
 // Import photorealistic aerial disaster photos
 import floodCitySosPhotoUrl from './assets/images/aerial_flood_city_disaster_1791979564485.jpg';
@@ -529,6 +529,70 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
         bbox: { x: 28 * CELL - 8, y: 8 * CELL - 8, w: 48, h: 48 },
         geoCoordinates: calculateGeoCoordinates(28, 8, 'flood_city_sos'),
       },
+      // Additional Human & Vehicle Targets
+      ...(
+        [
+          [9, 6, 0.96, 'North Residential Rooftop Survivor', 'Stranded civilian spotted on flooded residential roof terrace.'],
+          [6, 8, 0.95, 'West Floodline Porch Survivor', 'Resident waving from elevated covered porch above floodwaters.'],
+        ] as [number, number, number, string, string][]
+      ).map(([cx, cy, conf, label, desc], i) => ({
+        target_id: `T${28 + i}`,
+        x: cx,
+        y: cy,
+        col: cx,
+        row: cy,
+        cell_id: cy * 30 + cx,
+        target_screen_x: cx * CELL + CELL / 2,
+        target_screen_y: cy * CELL + CELL / 2,
+        type: 'HUMAN' as const,
+        priority: 'HIGH' as const,
+        label,
+        description: desc,
+        found: false,
+        confidence: conf,
+        assigned_drone: null,
+        rgbConfidence: 0,
+        lidarConfidence: 0,
+        kalmanFusedConfidence: 0,
+        bbox: { x: cx * CELL - 8, y: cy * CELL - 8, w: 48, h: 48 },
+        geoCoordinates: calculateGeoCoordinates(cx, cy, 'flood_city_sos'),
+      })),
+      ...(
+        [
+          [13, 2, 0.97, 'North Avenue White Sedan', 'White passenger sedan stranded in deep northern flooded lane.'],
+          [13, 5, 0.96, 'Flooded Corridor Grey Sedan', 'Grey sedan partially submerged along central vertical road.'],
+          [13, 8, 0.98, 'Central Intersection White SUV', 'White SUV immobilized near flooded mid-town crosswalk.'],
+          [13, 9, 0.97, 'Center Avenue Dark Sedan', 'Dark commuter car submerged up to door handles in flood channel.'],
+          [13, 10, 0.97, 'Center Avenue Silver Sedan', 'Silver car half-submerged in central inundated street queue.'],
+          [13, 11, 0.96, 'Submerged Mid-Street Vehicle', 'Marooned sedan sitting in rising murky street current.'],
+          [23, 0, 0.94, 'Northeast Corner Flooded Car', 'Passenger vehicle visible along far northeast inundated road.'],
+          [21, 3, 0.95, 'North Commercial Yard Vehicle', 'Service vehicle trapped beside flooded northeastern building.'],
+          [18, 13, 0.99, 'Swift-Water Red Rescue Boat', 'Active rescue inflatable watercraft navigating flooded intersection.'],
+          [0, 14, 0.96, 'West Perimeter White Sedan', 'White sedan stalled at far-west flooded neighborhood boundary.'],
+          [18, 19, 0.97, 'South Avenue Tan SUV', 'Tan SUV partially submerged at southern street foreground edge.'],
+        ] as [number, number, number, string, string][]
+      ).map(([cx, cy, conf, label, desc], i) => ({
+        target_id: `T${30 + i}`,
+        x: cx,
+        y: cy,
+        col: cx,
+        row: cy,
+        cell_id: cy * 30 + cx,
+        target_screen_x: cx * CELL + CELL / 2,
+        target_screen_y: cy * CELL + CELL / 2,
+        type: 'VEHICLE' as const,
+        priority: 'MEDIUM' as const,
+        label,
+        description: desc,
+        found: false,
+        confidence: conf,
+        assigned_drone: null,
+        rgbConfidence: 0,
+        lidarConfidence: 0,
+        kalmanFusedConfidence: 0,
+        bbox: { x: cx * CELL - 8, y: cy * CELL - 8, w: 48, h: 48 },
+        geoCoordinates: calculateGeoCoordinates(cx, cy, 'flood_city_sos'),
+      })),
     ],
   },
   {
@@ -724,7 +788,7 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
     subtitle: 'Multi-Story Reinforced Concrete Apartments Flattened by 7.8M Quake',
     location: 'Epicenter Urban Core Sector 2–4',
     imageUrl: earthquakeCollapsePhotoUrl,
-    objectivesSummary: 'Survivors waving on upper concrete floor, rescue workers with search dogs, major road fault rupture',
+    objectivesSummary: '42 rooftop survivors & USAR rescuers (Cyan), 26 emergency & civilian vehicles (Purple), tectonic fault crack, orange medical tent',
     targets: [
       {
         target_id: 'T1',
@@ -732,10 +796,10 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
         y: 6,
         type: 'HUMAN',
         priority: 'HIGH',
-        label: 'Survivors Waving on Upper Slab (6 People)',
-        description: 'Cluster of 6 civilians stranded atop tilted roof slab waving their arms for drone aerial hoist.',
+        label: 'Survivors Waving on Upper Slab',
+        description: 'Central stranded civilians atop tilted reinforced concrete slab waving for aerial hoist.',
         found: false,
-        confidence: 0,
+        confidence: 0.99,
         assigned_drone: null,
         rgbConfidence: 0,
         lidarConfidence: 0,
@@ -748,10 +812,10 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
         y: 16,
         type: 'HUMAN',
         priority: 'HIGH',
-        label: 'USAR Search & Rescue Squad with Dogs',
-        description: 'First responders in orange protective gear and search canines inspecting collapsed concrete cavity.',
+        label: 'USAR Search & Rescue Squad Lead',
+        description: 'First responders in orange protective gear coordinating canine search across rubble cavity.',
         found: false,
-        confidence: 0,
+        confidence: 0.98,
         assigned_drone: null,
         rgbConfidence: 0,
         lidarConfidence: 0,
@@ -765,9 +829,9 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
         type: 'STRUCTURAL_CRACK',
         priority: 'HIGH',
         label: 'Tectonic Ground Fault Fissure',
-        description: 'Deep tectonic fault rupture that has split the 4-lane arterial road and severed utility pipes.',
+        description: 'Deep tectonic fault rupture splitting the multi-lane arterial road and utilities.',
         found: false,
-        confidence: 0,
+        confidence: 0.99,
         assigned_drone: null,
         rgbConfidence: 0,
         lidarConfidence: 0,
@@ -781,9 +845,9 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
         type: 'VEHICLE',
         priority: 'MEDIUM',
         label: 'Emergency Mobile Triage Ambulance',
-        description: 'Critical care ambulance unit stationed at road corner ready to receive extracted casualties.',
+        description: 'Critical care ambulance stationed at intersection with rear doors open for casualties.',
         found: false,
-        confidence: 0,
+        confidence: 0.99,
         assigned_drone: null,
         rgbConfidence: 0,
         lidarConfidence: 0,
@@ -797,15 +861,138 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
         type: 'ANOMALY',
         priority: 'MEDIUM',
         label: 'Inflatable Orange Emergency Medical Tent',
-        description: 'Field hospital setup providing immediate trauma stabilization for rescued survivors.',
+        description: 'Field trauma stabilization tent receiving evacuated casualties on eastern plaza.',
         found: false,
-        confidence: 0,
+        confidence: 0.99,
         assigned_drone: null,
         rgbConfidence: 0,
         lidarConfidence: 0,
         kalmanFusedConfidence: 0,
         bbox: { x: 25 * CELL - 8, y: 13 * CELL - 8, w: 48, h: 48 },
       },
+      ...(
+        [
+          [1, 4, 0.94, 'Sidewalk Evacuee (Northwest)', 'Displaced civilian standing beside trees along northwest avenue.'],
+          [2, 4, 0.95, 'Sidewalk Civilians (Northwest)', 'Residents gathered along northwest curb near emergency perimeter.'],
+          [0, 6, 0.93, 'West Perimeter Pedestrian', 'Resident near damaged western storefront awaiting instruction.'],
+          [20, 2, 0.92, 'North Alley Bystander', 'Person near northern damaged apartment courtyard.'],
+          [25, 2, 0.94, 'Northeast Street Bystanders', 'Civilians gathered near northeast parked vehicles.'],
+          [26, 4, 0.96, 'Crane Perimeter Responder', 'Safety spotter near heavy crane and emergency fire truck.'],
+          [24, 5, 0.95, 'Heavy Crane Crew Member', 'Responder assisting debris lifting along eastern flank.'],
+          [26, 6, 0.95, 'East Curb Responder', 'First responder coordinating traffic beside utility vans.'],
+          [26, 7, 0.94, 'East Sidewalk Responder', 'Safety officer near parked white response vans.'],
+          [26, 8, 0.94, 'East Storefront Pedestrian', 'Civilian beside parked silver sedan on eastern block.'],
+          [27, 8, 0.93, 'East Walk Bystander', 'Pedestrian standing along eastern commercial sidewalk.'],
+          [28, 10, 0.95, 'East Crosswalk Civilian', 'Person crossing eastern intersection toward medical tent.'],
+          [28, 9, 0.94, 'East Corner Bystander', 'Civilian near eastern corner building entrance.'],
+          [27, 10, 0.96, 'East Avenue Responders', 'Responders walking toward triage perimeter at crosswalk.'],
+          [19, 10, 0.97, 'Ambulance Staging Responders', 'Paramedics staged behind open emergency ambulance doors.'],
+          [16, 6, 0.99, 'Upper Slab Survivors (Right)', 'Stranded survivors waving from east edge of pancaked concrete slab.'],
+          [14, 6, 0.99, 'Upper Slab Survivors (Left)', 'Stranded survivors waving from west edge of pancaked concrete slab.'],
+          [15, 10, 0.98, 'Roadway USAR Scout', 'Orange-suited USAR scout moving across central intersection.'],
+          [15, 11, 0.98, 'Roadway USAR Coordinator', 'Orange-suited USAR coordinator approaching central rubble field.'],
+          [2, 13, 0.93, 'West Road First Responder', 'Responder inspecting pavement fault beside police cruiser.'],
+          [5, 12, 0.97, 'Canine Handler on Fault Edge', 'Orange USAR handler with search dog inspecting crack line.'],
+          [8, 11, 0.98, 'Rubble Ridge Spotter', 'Orange USAR responder directing search along upper rubble ridge.'],
+          [8, 19, 0.95, 'South Rubble Searcher', 'Orange USAR team member probing southern debris cavity.'],
+          [9, 12, 0.98, 'Upper Rubble Rescue Pair', 'USAR rescuers climbing over upper fractured concrete slabs.'],
+          [9, 15, 0.97, 'Central Rubble Rescue Squad', 'Orange USAR squad conducting acoustic listening sweep.'],
+          [7, 14, 0.96, 'West Rubble Rescue Specialist', 'USAR rescuer working along western collapse trench.'],
+          [9, 17, 0.97, 'Lower Rubble Rescue Team', 'Rescuers in orange gear navigating lower concrete debris.'],
+          [11, 17, 0.98, 'Canine Search Team (South)', 'USAR search squad and dogs scanning deep slab void.'],
+          [12, 17, 0.98, 'USAR Extraction Specialists', 'Search specialists with canine units on lower slab deck.'],
+          [14, 17, 0.97, 'South-East Rubble Responder', 'Orange-suited responder signaling from lower rubble zone.'],
+          [17, 16, 0.96, 'East Rubble Edge Rescuer', 'Responder assisting stretcher path at east rubble perimeter.'],
+          [16, 14, 0.97, 'East Debris Slope Rescuers', 'USAR personnel descending eastern concrete debris edge.'],
+          [11, 13, 0.98, 'Mid-Rubble USAR Cluster', 'Three orange USAR rescuers probing fractured column void.'],
+          [13, 13, 0.98, 'Center-East USAR Team', 'Orange USAR team searching eastern concrete slab opening.'],
+          [21, 16, 0.96, 'Southeast Crosswalk Squad', 'Responders lined along southeast pedestrian crosswalk.'],
+          [22, 16, 0.96, 'Triage Perimeter Security', 'Emergency personnel staging near southeast crosswalk.'],
+          [24, 16, 0.95, 'Fire Crew Staging Team', 'First responders beside fire truck and crosswalk perimeter.'],
+          [22, 12, 0.97, 'Field Hospital Triage Medics', 'Medical team loading casualty stretcher outside orange tent.'],
+          [23, 12, 0.98, 'Medical Tent Intake Staff', 'Paramedics treating stabilized evacuee at tent entrance.'],
+          [23, 13, 0.97, 'Trauma Stretcher Team', 'Medical personnel wheeling emergency stretcher beside tent.'],
+          [21, 14, 0.97, 'Triage Staging Stretcher Crew', 'Emergency responders assisting casualties beside medical tent entrance.'],
+          [18, 12, 0.97, 'Ambulance Rear Trauma Crew', 'Medical personnel staging casualty gear behind open ambulance.'],
+          [19, 13, 0.96, 'Intersection Triage Responders', 'Paramedics coordinating stretcher transfer near ambulance lane.'],
+          [9, 4, 0.95, 'Northwest Slab Edge Spotter', 'First responder monitoring north collapse perimeter beside rubble.'],
+          [10, 13, 0.97, 'Central Rubble Searchers', 'Orange-suited USAR specialists scanning center collapse cavity.'],
+          [12, 13, 0.98, 'Mid-Deck USAR Rescuers', 'Rescue squad members communicating across fractured floor slab.'],
+          [13, 11, 0.97, 'Upper Rubble Edge Rescuer', 'Orange USAR responder traversing northern rubble slope.'],
+          [13, 15, 0.98, 'Core Void Canine Responders', 'USAR rescuers and search dog probing lower rubble trench.'],
+          [13, 18, 0.96, 'South Debris Line Responder', 'Orange-suited searcher inspecting southern collapsed roof bay.'],
+          [17, 17, 0.96, 'Southeast Rubble Perimeter Team', 'Responders staging extraction equipment near southeast rubble edge.'],
+        ] as [number, number, number, string, string][]
+      ).map(([cx, cy, conf, label, desc], i) => ({
+        target_id: `T${6 + i}`,
+        x: cx,
+        y: cy,
+        col: cx,
+        row: cy,
+        cell_id: cy * 30 + cx,
+        target_screen_x: cx === 26 && cy === 8 ? cx * CELL + CELL * 0.72 : cx * CELL + CELL / 2,
+        target_screen_y: cx === 26 && cy === 8 ? cy * CELL + CELL * 0.65 : cy * CELL + CELL / 2,
+        type: 'HUMAN' as const,
+        priority: 'HIGH' as const,
+        label,
+        description: desc,
+        found: false,
+        confidence: conf,
+        assigned_drone: null,
+        rgbConfidence: 0,
+        lidarConfidence: 0,
+        kalmanFusedConfidence: 0,
+        bbox: { x: cx * CELL - 8, y: cy * CELL - 8, w: 48, h: 48 },
+      })),
+      ...(
+        [
+          [6, 0, 0.97, 'Northern Emergency Support Van', 'White emergency support van advancing along north avenue.'],
+          [5, 1, 0.99, 'North Avenue Fire Engine', 'Red heavy fire truck deployed on northwest inbound lane.'],
+          [5, 2, 0.96, 'Fire Engine Forward Cab', 'Forward section of red fire apparatus on northern roadway.'],
+          [3, 1, 0.94, 'Northwest Curb Sedan', 'Parked civilian sedan facing north along avenue shoulder.'],
+          [1, 5, 0.98, 'West Avenue Police Cruiser', 'White law enforcement cruiser blocking northwest lane.'],
+          [0, 7, 0.96, 'West Perimeter Fire Truck', 'Red fire engine stationed at western road perimeter.'],
+          [0, 11, 0.95, 'Southwest Lane Sedan', 'Silver sedan stranded beside west road curb.'],
+          [1, 12, 0.98, 'Fault Line Police Cruiser', 'White police car parked beside deep diagonal fault crack.'],
+          [0, 16, 0.94, 'Southwest Corner Sedan', 'White passenger car stalled at southwest intersection edge.'],
+          [24, 19, 0.98, 'Southeast Police Cruiser', 'White emergency patrol car positioned at south crosswalk.'],
+          [28, 17, 0.99, 'Southeast Heavy Fire Engine', 'Red fire rescue truck staged at southeast intersection.'],
+          [28, 15, 0.98, 'East Crosswalk Police Cruiser', 'Police patrol cruiser parked at east crosswalk approach.'],
+          [9, 1, 0.95, 'North Rubble Access Sedan', 'Civilian car parked near northern damaged apartment frontage.'],
+          [8, 2, 0.97, 'North-West Emergency Cruiser', 'White police patrol unit stationed along center divider.'],
+          [8, 3, 0.96, 'Rubble Perimeter White Sedan', 'White sedan stopped beside western apartment collapse zone.'],
+          [28, 0, 0.93, 'Northeast Far Avenue Car', 'Civilian vehicle visible along far northeast road lane.'],
+          [27, 1, 0.95, 'Northeast Lane White Sedan', 'White sedan parked along northeast residential street.'],
+          [26, 2, 0.95, 'Northeast Curb White Car', 'White car positioned beside northeast tree line.'],
+          [25, 3, 0.97, 'Crane Sector Patrol Van', 'White emergency vehicle parked adjacent to crane outriggers.'],
+          [27, 4, 0.99, 'East Avenue Fire Engine', 'Red ladder fire truck deployed on eastern street lane.'],
+          [29, 3, 0.94, 'Far-East Curb SUV', 'Dark SUV parked along far-eastern street shoulder.'],
+          [29, 1, 0.92, 'Far-East North Sedan', 'Compact sedan parked near far-northeast block corner.'],
+          [27, 6, 0.98, 'East Sector Utility Van', 'White commercial/rescue van stopped by east storefront.'],
+          [27, 7, 0.98, 'East Sector Response Van', 'White response van staged beside eastern apartment block.'],
+          [26, 8, 0.97, 'East Curb Silver Sedan', 'Silver civilian car parked at eastern storefront curb.'],
+        ] as [number, number, number, string, string][]
+      ).map(([cx, cy, conf, label, desc], i) => ({
+        target_id: `T${56 + i}`,
+        x: cx,
+        y: cy,
+        col: cx,
+        row: cy,
+        cell_id: cy * 30 + cx,
+        target_screen_x: cx === 26 && cy === 8 ? cx * CELL + CELL * 0.35 : cx * CELL + CELL / 2,
+        target_screen_y: cx === 26 && cy === 8 ? cy * CELL + CELL * 0.45 : cy * CELL + CELL / 2,
+        type: 'VEHICLE' as const,
+        priority: 'MEDIUM' as const,
+        label,
+        description: desc,
+        found: false,
+        confidence: conf,
+        assigned_drone: null,
+        rgbConfidence: 0,
+        lidarConfidence: 0,
+        kalmanFusedConfidence: 0,
+        bbox: { x: cx * CELL - 8, y: cy * CELL - 8, w: 48, h: 48 },
+      })),
     ],
   },
   {
@@ -1146,9 +1333,18 @@ export const CALAMITY_SCENARIOS: CalamityScenario[] = [
   },
 ];
 
-// Ensure all calamity scenarios have exact GPS coordinates and calibrated probability ratings
+// Ensure all calamity scenarios have exact GPS coordinates, grid indices, and calibrated probability ratings
 CALAMITY_SCENARIOS.forEach((scenario) => {
   scenario.targets.forEach((target) => {
+    if (target.col === undefined) target.col = target.x;
+    if (target.row === undefined) target.row = target.y;
+    if (target.cell_id === undefined) target.cell_id = target.row * 30 + target.col;
+    if (target.target_screen_x === undefined) {
+      target.target_screen_x = target.col * CELL + CELL / 2;
+    }
+    if (target.target_screen_y === undefined) {
+      target.target_screen_y = target.row * CELL + CELL / 2;
+    }
     if (!target.geoCoordinates) {
       target.geoCoordinates = calculateGeoCoordinates(target.x, target.y, scenario.id);
     }
@@ -1157,181 +1353,182 @@ CALAMITY_SCENARIOS.forEach((scenario) => {
         target.type === 'VEHICLE'
           ? 1.0
           : target.type === 'HUMAN'
-            ? 0.98
-            : target.type === 'ANIMAL'
-              ? 0.96
-              : 0.99;
+          ? 0.98
+          : target.type === 'ANIMAL'
+          ? 0.96
+          : 0.99;
     }
   });
 });
 
+export interface VisionQuadrantTile {
+  dataUrl: string;
+  bounds: [number, number, number, number];
+}
+
 // Intelligent Automated Computer Vision & Gemini Vision Scanner for reconnaissance imagery
 // Analyzes the uploaded aerial/satellite image across the discrete 600-cell coordinate grid (30x20)
-// and maps detected entities ('human', 'vehicle', 'boat', 'animal') directly to [col, row, cell_id]
+// using parallel full-image + forensic submerged-vehicle + zoomed quadrant tile passes
 export async function detectTargetsWithGeminiVision(
-  imageData: string
-): Promise<Target[]> {
+  imageData: string,
+  tiles?: VisionQuadrantTile[]
+): Promise<{ targets: Target[]; error?: string }> {
   try {
     const response = await fetch('/api/gemini/detect-targets', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ image: imageData }),
+      body: JSON.stringify({
+        image: imageData,
+        ...(tiles && tiles.length > 0 ? { tiles } : {}),
+      }),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.warn('Gemini Vision API returned status', response.status, errText);
-      return [];
+      let errMessage = `Gemini Vision API error (${response.status})`;
+      try {
+        const errJson = await response.json();
+        if (errJson?.error) errMessage = errJson.error;
+      } catch {
+        const errText = await response.text();
+        if (errText) errMessage = errText;
+      }
+      console.warn('Gemini Vision API returned status', response.status, errMessage);
+      return { targets: [], error: errMessage };
     }
 
     const data = await response.json();
-    if (!data || !Array.isArray(data.detections) || data.detections.length === 0) {
-      return [];
+    if (!data || !Array.isArray(data.detections)) {
+      return { targets: [] };
     }
 
+    const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
     const cellWidth = CELL;
     const cellHeight = CELL;
 
-    // Track occupied cell and type pairs to prevent overlapping stale duplicates
-    const seenByCellAndType = new Map<string, number>();
+    const formatSubType = (sub?: string): string => {
+      if (!sub || sub === 'other') return '';
+      return sub
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    };
 
-    const targets: Target[] = [];
+    const targets: Target[] = data.detections.map((d: any, idx: number) => {
+      let col = clamp(Math.floor(Number(d.col) || 0), 0, 29);
+      let row = clamp(Math.floor(Number(d.row) || 0), 0, 19);
+      let box2d: [number, number, number, number] | undefined;
+      let target_screen_x = col * cellWidth + cellWidth / 2;
+      let target_screen_y = row * cellHeight + cellHeight / 2;
+      let bbox = {
+        x: col * cellWidth - 4,
+        y: row * cellHeight - 4,
+        w: cellWidth + 8,
+        h: cellHeight + 8,
+      };
 
-    data.detections.forEach((d: any) => {
-      const col = Math.max(0, Math.min(29, Math.round(Number(d.col) || 0)));
-      const row = Math.max(0, Math.min(19, Math.round(Number(d.row) || 0)));
+      if (Array.isArray(d.box_2d) && d.box_2d.length === 4) {
+        const [ymin, xmin, ymax, xmax] = d.box_2d.map((n: any) =>
+          clamp(Number(n) || 0, 0, 1000)
+        );
+        box2d = [ymin, xmin, ymax, xmax];
+        const cx = (xmin + xmax) / 2;
+        const cy = (ymin + ymax) / 2;
+        col = clamp(Math.floor((cx / 1000) * 30), 0, 29);
+        row = clamp(Math.floor((cy / 1000) * 20), 0, 19);
+        target_screen_x = (cx / 1000) * WIDTH;
+        target_screen_y = (cy / 1000) * HEIGHT;
+        bbox = {
+          x: (xmin / 1000) * WIDTH,
+          y: (ymin / 1000) * HEIGHT,
+          w: Math.max(12, ((xmax - xmin) / 1000) * WIDTH),
+          h: Math.max(12, ((ymax - ymin) / 1000) * HEIGHT),
+        };
+      }
+
       const cell_id =
-        typeof d.cell_id === 'number' && d.cell_id >= 0 && d.cell_id < 600
+        typeof d.cell_id === 'number' && d.cell_id >= 0 && d.cell_id < 600 && !box2d
           ? d.cell_id
           : row * 30 + col;
 
-      const rawLabel = String(d.label || 'human').toLowerCase();
-      const rawSub = String(d.sub_type || '').toLowerCase();
-      const rawDesc = String(d.description || '').toLowerCase();
+      const rawType = String(d.type || d.label || 'human').toLowerCase();
+      const rawSubType = String(d.sub_type || '').toLowerCase();
+      const rawDesc = String(d.description || '');
+      const formattedSub = formatSubType(d.sub_type);
 
       let type: TargetType = 'HUMAN';
       let priority: 'HIGH' | 'MEDIUM' | 'LOW' = 'HIGH';
-      let labelText = 'Rooftop Survivor';
-      let descText = 'Stranded human detected via Gemini Vision SAR model on 600-cell grid';
+      let labelText = formattedSub || 'Rooftop Survivor';
+      let descText =
+        rawDesc || 'Stranded human detected via high-recall Gemini Vision SAR detector';
 
       if (
-        rawLabel.includes('building') ||
-        rawLabel.includes('damage') ||
-        rawLabel.includes('collapse') ||
-        rawLabel.includes('rubble') ||
-        rawSub.includes('building')
-      ) {
-        type = 'BUILDING';
-        priority = 'HIGH';
-        labelText = 'Damaged Building / Structural Collapse';
-        descText = d.description || 'Compromised building facade, collapsed roof, or debris breach';
-      } else if (
-        rawLabel.includes('vehicle') ||
-        rawLabel.includes('car') ||
-        rawLabel.includes('truck') ||
-        rawLabel.includes('van') ||
-        rawLabel.includes('suv')
-      ) {
-        type = 'VEHICLE';
-        priority = 'MEDIUM';
-        if (
-          rawSub.includes('submerge') ||
-          rawDesc.includes('submerge') ||
-          rawDesc.includes('flood') ||
-          rawDesc.includes('water')
-        ) {
-          labelText = 'Submerged / Flooded Vehicle';
-          descText = d.description || 'Partially submerged vehicle in flooded roadway';
-        } else {
-          labelText = 'Stranded / Abandoned Vehicle';
-          descText = d.description || 'Vehicle signature isolated on evacuation route';
-        }
-      } else if (
-        rawLabel.includes('boat') ||
-        rawLabel.includes('dinghy') ||
-        rawLabel.includes('raft') ||
-        rawLabel.includes('vessel') ||
-        rawSub.includes('boat')
+        rawType.includes('boat') ||
+        rawSubType.includes('boat') ||
+        rawSubType.includes('raft') ||
+        rawSubType.includes('dinghy') ||
+        rawSubType.includes('watercraft')
       ) {
         type = 'BOAT';
         priority = 'HIGH';
-        labelText = 'Watercraft / Rescue Boat';
-        descText = d.description || 'Rescue craft or vessel identified in water sector';
+        labelText = formattedSub || 'Watercraft / Rescue Boat';
+        descText = rawDesc || 'Rescue craft or vessel identified in water sector';
       } else if (
-        rawLabel.includes('animal') ||
-        rawLabel.includes('livestock') ||
-        rawLabel.includes('sheep') ||
-        rawLabel.includes('pet') ||
-        rawSub.includes('animal')
+        rawType.includes('vehicle') ||
+        rawType.includes('car') ||
+        rawType.includes('truck') ||
+        rawType.includes('van') ||
+        rawType.includes('suv') ||
+        rawType.includes('bus') ||
+        rawType.includes('sedan') ||
+        rawType.includes('pickup') ||
+        rawType.includes('auto') ||
+        rawType.includes('taxi') ||
+        rawType.includes('ambulance') ||
+        rawType.includes('tractor') ||
+        rawSubType.includes('car') ||
+        rawSubType.includes('truck') ||
+        rawSubType.includes('van') ||
+        rawSubType.includes('suv') ||
+        rawSubType.includes('sedan') ||
+        rawSubType.includes('pickup') ||
+        rawSubType.includes('bus') ||
+        rawSubType.includes('vehicle')
+      ) {
+        type = 'VEHICLE';
+        priority = 'MEDIUM';
+        labelText = formattedSub || 'Submerged / Stranded Vehicle';
+        descText = rawDesc || 'Vehicle signature isolated in evacuation grid';
+      } else if (
+        rawType.includes('animal') ||
+        rawType.includes('livestock') ||
+        rawType.includes('cattle') ||
+        rawType.includes('cow') ||
+        rawType.includes('dog') ||
+        rawType.includes('horse') ||
+        rawType.includes('sheep')
       ) {
         type = 'ANIMAL';
         priority = 'MEDIUM';
-        labelText = 'Stranded Animal / Livestock';
-        descText = d.description || 'Domestic or farm animal isolated by calamity';
+        labelText = formattedSub || 'Stranded Animal / Livestock';
+        descText = rawDesc || 'Domestic or farm animal isolated by calamity';
       } else {
-        // Human detections: distinguish rooftop vs drowning/water vs balcony
         type = 'HUMAN';
         priority = 'HIGH';
-        if (
-          rawSub.includes('water') ||
-          rawSub.includes('drown') ||
-          rawDesc.includes('water') ||
-          rawDesc.includes('drown') ||
-          rawDesc.includes('swimming') ||
-          rawDesc.includes('current') ||
-          rawDesc.includes('river')
-        ) {
-          labelText = 'Water Distress / Drowning Victim';
-          descText = d.description || 'Individual in floodwaters or river needing swift-water rescue extraction';
-        } else if (
-          rawSub.includes('balcony') ||
-          rawDesc.includes('balcony') ||
-          rawDesc.includes('porch')
-        ) {
-          labelText = 'Balcony Trapped Resident';
-          descText = d.description || 'Citizen trapped on exterior balcony awaiting extraction';
-        } else if (
-          rawSub.includes('roof') ||
-          rawDesc.includes('roof') ||
-          rawDesc.includes('sos') ||
-          rawDesc.includes('terrace')
-        ) {
-          labelText = 'Rooftop SOS Survivor';
-          descText = d.description || 'Stranded person on roof apex waving distress signal';
-        } else {
-          labelText = 'Stranded Survivor';
-          descText = d.description || 'Stranded person requiring urgent drone swarm extraction';
-        }
+        labelText = formattedSub || 'Stranded Survivor';
+        descText = rawDesc || 'Person requiring urgent drone swarm extraction';
       }
-
-      // Filter exact duplicate targets in the exact same cell with same type
-      const cellTypeKey = `${col},${row},${type}`;
-      const duplicateCount = seenByCellAndType.get(cellTypeKey) || 0;
-      if (duplicateCount >= 2) {
-        // Limit to max 2 distinct targets of same type in same cell to prevent clutter
-        return;
-      }
-      seenByCellAndType.set(cellTypeKey, duplicateCount + 1);
-
-      // Micro pixel offset if 2 targets share the exact cell (cluster presentation)
-      const offsetX = duplicateCount === 1 ? 6 : 0;
-      const offsetY = duplicateCount === 1 ? -6 : 0;
-      const target_screen_x = col * cellWidth + cellWidth / 2 + offsetX;
-      const target_screen_y = row * cellHeight + cellHeight / 2 + offsetY;
 
       const conf =
         typeof d.confidence === 'number'
-          ? Math.max(0.6, Math.min(1.0, d.confidence))
+          ? Math.max(0.45, Math.min(1.0, d.confidence))
           : type === 'VEHICLE'
-            ? 0.96
-            : type === 'HUMAN'
-              ? 0.98
-              : 0.95;
+          ? 0.94
+          : 0.96;
 
-      targets.push({
-        target_id: `T${targets.length + 1}`,
+      return {
+        target_id: `T${idx + 1}`,
         x: col,
         y: row,
         col,
@@ -1340,6 +1537,7 @@ export async function detectTargetsWithGeminiVision(
         target_screen_x,
         target_screen_y,
         type,
+        sub_type: d.sub_type,
         priority,
         label: labelText,
         description: descText,
@@ -1350,176 +1548,42 @@ export async function detectTargetsWithGeminiVision(
         lidarConfidence: 0,
         kalmanFusedConfidence: 0,
         geoCoordinates: calculateGeoCoordinates(col, row),
-        bbox: {
-          x: col * cellWidth - 4,
-          y: row * cellHeight - 4,
-          w: cellWidth + 8,
-          h: cellHeight + 8,
-        },
-      });
+        box_2d: box2d,
+        bbox,
+      };
     });
 
-    return targets;
-  } catch (err) {
+    return { targets };
+  } catch (err: any) {
     console.error('Failed to run Gemini Vision detection:', err);
-    return [];
-  }
-}
-
-// Fallback Computer Vision Scanner if Gemini Vision API is unreachable
-function fallbackContrastScanner(
-  imgElement: HTMLImageElement
-): Target[] {
-  const canvas = document.createElement('canvas');
-  canvas.width = 30; // Grid W
-  canvas.height = 20; // Grid H
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return [];
-
-  ctx.drawImage(imgElement, 0, 0, 30, 20);
-  const imgData = ctx.getImageData(0, 0, 30, 20);
-  const data = imgData.data;
-
-  const zoneTargets: { x: number; y: number; score: number }[][] = [[], [], [], [], []];
-
-  for (let y = 2; y < 18; y++) {
-    for (let x = 1; x < 29; x++) {
-      const idx = (y * 30 + x) * 4;
-      const r = data[idx];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
-      const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
-
-      let neighbourBrightness = 0;
-      let count = 0;
-      for (const [dx, dy] of [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-      ]) {
-        const nIdx = ((y + dy) * 30 + (x + dx)) * 4;
-        neighbourBrightness +=
-          0.299 * data[nIdx] + 0.587 * data[nIdx + 1] + 0.114 * data[nIdx + 2];
-        count++;
-      }
-      const avgNeighbour = neighbourBrightness / count;
-      const contrast = Math.abs(brightness - avgNeighbour);
-
-      const zoneIndex = Math.min(4, Math.floor(x / 6));
-      zoneTargets[zoneIndex].push({
-        x,
-        y,
-        score: contrast + (Math.sin(x * 2.3 + y * 3.7) + 1) * 8,
-      });
-    }
-  }
-
-  const selectedPoints: { x: number; y: number }[] = [];
-
-  for (let z = 0; z < 5; z++) {
-    const list = zoneTargets[z];
-    list.sort((a, b) => b.score - a.score);
-    if (list.length > 0) {
-      selectedPoints.push({ x: list[0].x, y: list[0].y });
-    } else {
-      selectedPoints.push({ x: z * 6 + 3, y: 6 + (z % 3) * 4 });
-    }
-  }
-
-  const categoryTemplates: {
-    type: TargetType;
-    label: string;
-    desc: string;
-    priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  }[] = [
-      {
-        type: 'HUMAN',
-        label: 'Identified Survivor / Rooftop Evacuee',
-        desc: 'Person detected by aerial computer vision needing urgent drone swarm extraction.',
-        priority: 'HIGH',
-      },
-      {
-        type: 'HUMAN',
-        label: 'Trapped Citizen Signaling Distress',
-        desc: 'Survivor detected in disaster zone waving high-contrast marker.',
-        priority: 'HIGH',
-      },
-      {
-        type: 'ANIMAL',
-        label: 'Trapped Animal / Domestic Livestock',
-        desc: 'Livestock signature isolated by disaster inundation/debris.',
-        priority: 'MEDIUM',
-      },
-      {
-        type: 'VEHICLE',
-        label: 'Stranded Transport / Emergency Craft',
-        desc: 'Stationary vehicle detected in disaster evacuation sector.',
-        priority: 'MEDIUM',
-      },
-      {
-        type: 'BOAT',
-        label: 'Rescue Boat / Float Craft',
-        desc: 'Emergency watercraft detected in flood evacuation zone.',
-        priority: 'HIGH',
-      },
-      {
-        type: 'BUILDING',
-        label: 'Damaged Building / Structural Breach',
-        desc: 'Severely damaged structure or collapsed roof detected in disaster quadrant.',
-        priority: 'HIGH',
-      },
-    ];
-
-  return selectedPoints.map((pt, idx) => {
-    const tmpl = categoryTemplates[idx % categoryTemplates.length];
-    const cell_id = pt.y * 30 + pt.x;
     return {
-      target_id: `T${idx + 1}`,
-      x: pt.x,
-      y: pt.y,
-      col: pt.x,
-      row: pt.y,
-      cell_id,
-      target_screen_x: pt.x * CELL + CELL / 2,
-      target_screen_y: pt.y * CELL + CELL / 2,
-      type: tmpl.type,
-      priority: tmpl.priority,
-      label: tmpl.label,
-      description: tmpl.desc,
-      found: false,
-      confidence: tmpl.type === 'VEHICLE' ? 0.95 : 0.98,
-      assigned_drone: null,
-      rgbConfidence: 0,
-      lidarConfidence: 0,
-      kalmanFusedConfidence: 0,
-      geoCoordinates: calculateGeoCoordinates(pt.x, pt.y),
-      bbox: {
-        x: pt.x * CELL - 6,
-        y: pt.y * CELL - 6,
-        w: 44,
-        h: 44,
-      },
+      targets: [],
+      error: err?.message || 'Network error reaching Gemini Vision detection endpoint',
     };
-  });
+  }
 }
 
-// Main image analysis entry point: tries Gemini Vision SAR model first, falls back if offline
+// Main image analysis entry point: invokes high-recall Gemini Vision SAR detector
+// with full-frame passes + 4 overlapping high-resolution quadrant crops
 export function analyzeUploadedImageForTargets(
   imgElement: HTMLImageElement,
-  onComplete: (targets: Target[]) => void
+  onComplete: (targets: Target[]) => void,
+  onError?: (errMsg: string) => void
 ): void {
-  // Convert img to dataURL for Gemini Vision ingestion
+  const W = imgElement.naturalWidth || imgElement.width || 960;
+  const H = imgElement.naturalHeight || imgElement.height || 640;
+
+  // Convert img to dataURL for Gemini Vision ingestion if needed
   let dataUrl = imgElement.src;
   if (!dataUrl.startsWith('data:')) {
     try {
       const c = document.createElement('canvas');
-      c.width = imgElement.naturalWidth || imgElement.width || 960;
-      c.height = imgElement.naturalHeight || imgElement.height || 640;
+      c.width = W;
+      c.height = H;
       const ctx = c.getContext('2d');
       if (ctx) {
-        ctx.drawImage(imgElement, 0, 0, c.width, c.height);
-        dataUrl = c.toDataURL('image/jpeg', 0.9);
+        ctx.drawImage(imgElement, 0, 0, W, H);
+        dataUrl = c.toDataURL('image/jpeg', 0.94);
       }
     } catch {
       // tainted canvas or cross-origin fallback
@@ -1527,17 +1591,59 @@ export function analyzeUploadedImageForTargets(
     }
   }
 
-  detectTargetsWithGeminiVision(dataUrl)
-    .then((geminiTargets) => {
-      if (geminiTargets.length > 0) {
-        onComplete(geminiTargets);
-      } else {
-        const fallback = fallbackContrastScanner(imgElement);
-        onComplete(fallback);
+  // Generate 4 overlapping zoomed quadrant tiles so half-submerged & small vehicles have ~2x resolution
+  let tiles: VisionQuadrantTile[] | undefined;
+  try {
+    const normalizedQuadrants: [number, number, number, number][] = [
+      [0, 0, 560, 560],
+      [0, 440, 560, 1000],
+      [440, 0, 1000, 560],
+      [440, 440, 1000, 1000],
+    ];
+    const tileCanvas = document.createElement('canvas');
+    const tileCtx = tileCanvas.getContext('2d');
+    if (tileCtx && W > 0 && H > 0) {
+      const builtTiles: VisionQuadrantTile[] = [];
+      for (const [yMinN, xMinN, yMaxN, xMaxN] of normalizedQuadrants) {
+        const sx = Math.max(0, Math.floor((xMinN / 1000) * W));
+        const sy = Math.max(0, Math.floor((yMinN / 1000) * H));
+        const ex = Math.min(W, Math.ceil((xMaxN / 1000) * W));
+        const ey = Math.min(H, Math.ceil((yMaxN / 1000) * H));
+        const sw = Math.max(1, ex - sx);
+        const sh = Math.max(1, ey - sy);
+
+        const targetW = Math.min(1400, Math.max(sw, 960));
+        const targetH = Math.max(1, Math.round((sh / sw) * targetW));
+        tileCanvas.width = targetW;
+        tileCanvas.height = targetH;
+        tileCtx.imageSmoothingEnabled = true;
+        tileCtx.imageSmoothingQuality = 'high';
+        tileCtx.clearRect(0, 0, targetW, targetH);
+        tileCtx.drawImage(imgElement, sx, sy, sw, sh, 0, 0, targetW, targetH);
+
+        builtTiles.push({
+          dataUrl: tileCanvas.toDataURL('image/jpeg', 0.92),
+          bounds: [(sy / H) * 1000, (sx / W) * 1000, (ey / H) * 1000, (ex / W) * 1000],
+        });
       }
+      if (builtTiles.length === 4) {
+        tiles = builtTiles;
+      }
+    }
+  } catch {
+    // Gracefully fall back to full-image passes if canvas readback is tainted
+    tiles = undefined;
+  }
+
+  detectTargetsWithGeminiVision(dataUrl, tiles)
+    .then(({ targets, error }) => {
+      if (error) {
+        onError?.(error);
+      }
+      onComplete(targets);
     })
-    .catch(() => {
-      const fallback = fallbackContrastScanner(imgElement);
-      onComplete(fallback);
+    .catch((err) => {
+      onError?.(err?.message || 'Failed to analyze image with Gemini Vision.');
+      onComplete([]);
     });
 }

@@ -476,6 +476,21 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         ctx.globalAlpha = cellWashAlpha;
         ctx.fillRect(cellX + 1, cellY + 1, cell_width - 2, cell_height - 2);
 
+        // 4b. If high-recall detector returned normalized box_2d [ymin, xmin, ymax, xmax], draw tight object box
+        if (target.box_2d && target.box_2d.length === 4) {
+          const [ymin, xmin, ymax, xmax] = target.box_2d;
+          const bx = (xmin / 1000) * WIDTH;
+          const by = (ymin / 1000) * HEIGHT;
+          const bw = Math.max(10, ((xmax - xmin) / 1000) * WIDTH);
+          const bh = Math.max(10, ((ymax - ymin) / 1000) * HEIGHT);
+          ctx.strokeStyle = themeColor;
+          ctx.lineWidth = 1.4;
+          ctx.globalAlpha = 0.85 * easeFade;
+          ctx.setLineDash([3, 2]);
+          ctx.strokeRect(bx, by, bw, bh);
+          ctx.setLineDash([]);
+        }
+
         // 5. Central pulsing rescue reticle when surveyed / found by drone
         ctx.globalAlpha = easeFade;
         const pulse = (Math.sin(time * 0.008) + 1) * 2.5;
@@ -524,8 +539,9 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         const textMetric = ctx.measureText(badgeText);
         const badgeW = Math.max(76, textMetric.width + 12);
         const badgeH = 15;
-        const badgeX = cellX + cell_width / 2 - badgeW / 2;
-        const badgeY = cellY - badgeH - 3;
+        const rawBadgeX = target_screen_x - badgeW / 2;
+        const badgeX = Math.max(2, Math.min(WIDTH - badgeW - 2, rawBadgeX));
+        const badgeY = cellY - badgeH - 3 < 2 ? cellY + cell_height + 3 : cellY - badgeH - 3;
 
         // High-contrast dark badge backing
         ctx.fillStyle = '#090e17';
@@ -540,7 +556,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         ctx.fillStyle = isFreshDiscovery ? '#ffffff' : themeColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(badgeText, cellX + cell_width / 2, badgeY + badgeH / 2 + 0.5);
+        ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2 + 0.5);
 
         ctx.restore();
       });

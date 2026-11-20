@@ -136,12 +136,17 @@ export const App: React.FC = () => {
       // In satellite image mode, clear static rock obstacles so drones can freely survey the full image
       const openBlocked = new Set<string>();
       blockedRef.current = openBlocked;
+      const newDrones = createDrones();
       const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, openBlocked, detectedTargets);
+      setDrones(newDrones);
       setTasks(newTasks);
+      setMissionStatus('READY');
+      setMissionTime(0);
+      setSelectedDroneId(null);
 
-      // If computer vision detected targets on the image, map them as the new mission objectives!
+      // Map the newly analyzed image targets cleanly (or empty if none detected)
+      const targetMap: Record<string, Target> = {};
       if (detectedTargets && detectedTargets.length > 0) {
-        const targetMap: Record<string, Target> = {};
         detectedTargets.forEach((t) => {
           targetMap[t.target_id] = { ...t, found: false, assigned_drone: null };
         });
@@ -150,7 +155,8 @@ export const App: React.FC = () => {
           `SATELLITE_IMAGE_APPLIED_[${imageName.toUpperCase()}]_${detectedTargets.length}_TARGETS_IDENTIFIED`
         );
       } else {
-        logEvent(`SATELLITE_IMAGE_APPLIED_[${imageName.toUpperCase()}]`);
+        setTargets({});
+        logEvent(`SATELLITE_IMAGE_APPLIED_[${imageName.toUpperCase()}]_0_TARGETS`);
       }
     },
     [logEvent]
@@ -195,15 +201,28 @@ export const App: React.FC = () => {
     blockedRef.current = newBlocked;
     const newDrones = createDrones();
     
-    // Cleanly reset targets to initial undiscovered state (found: false, assigned_drone: null)
+    // Cleanly reset targets to initial undiscovered state (preserving custom/Gemini-scanned targets)
     const newTargets: Record<string, Target> = {};
     if (backgroundImageUrl) {
-      const activeScenario =
-        CALAMITY_SCENARIOS.find((s) => s.imageUrl === backgroundImageUrl) ||
-        CALAMITY_SCENARIOS[0];
-      activeScenario.targets.forEach((t) => {
-        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null, discoveredAt: undefined };
-      });
+      const existingList = Object.values(targetsRef.current);
+      if (existingList.length > 0) {
+        existingList.forEach((t) => {
+          newTargets[t.target_id] = {
+            ...t,
+            found: false,
+            assigned_drone: null,
+            discoveredAt: undefined,
+            rgbConfidence: 0,
+            lidarConfidence: 0,
+            kalmanFusedConfidence: 0,
+          };
+        });
+      } else {
+        const activeScenario = CALAMITY_SCENARIOS.find((s) => s.imageUrl === backgroundImageUrl);
+        activeScenario?.targets.forEach((t) => {
+          newTargets[t.target_id] = { ...t, found: false, assigned_drone: null, discoveredAt: undefined };
+        });
+      }
     } else {
       const init = createInitialTargets();
       Object.values(init).forEach((t) => {

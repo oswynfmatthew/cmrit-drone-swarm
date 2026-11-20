@@ -32,6 +32,7 @@ export interface Target {
   target_screen_x?: number; // screen pixel X coordinate
   target_screen_y?: number; // screen pixel Y coordinate
   type: TargetType;
+  sub_type?: string;
   priority: TargetPriority;
   label?: string; // e.g. "Stranded Survivor", "Trapped Animal", "Submerged Vehicle"
   description?: string;
@@ -42,19 +43,22 @@ export interface Target {
   rgbConfidence: number;
   lidarConfidence: number;
   kalmanFusedConfidence: number;
+  box_2d?: [number, number, number, number]; // normalized [ymin, xmin, ymax, xmax] (0-1000)
   bbox?: { x: number; y: number; w: number; h: number };
   geoCoordinates?: string; // e.g. "34.0538° N, 118.2415° W"
   discoveredAt?: number; // timestamp when discovered by drone
 }
 
 export interface GeminiVisionDetection {
-  label: 'human' | 'vehicle' | 'boat' | 'animal' | 'damaged_building' | string;
+  id: string;
+  type: 'human' | 'vehicle' | 'animal' | 'boat' | string;
   sub_type?: string;
-  description?: string;
+  box_2d?: [number, number, number, number];
   col: number;
   row: number;
   cell_id: number;
   confidence: number;
+  description?: string;
 }
 
 export interface GeminiVisionResponse {
