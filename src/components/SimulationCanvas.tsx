@@ -65,6 +65,7 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const bgImageElementRef = useRef<HTMLImageElement | null>(null);
+  const targetDiscoveryTimesRef = useRef<Map<string, number>>(new Map());
 
   const [hoverCoord, setHoverCoord] = useState<{ x: number; y: number } | null>(null);
   const [showPaths, setShowPaths] = useState(true);
@@ -355,123 +356,194 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         // STRICT REQUIREMENT: Absolutely do NOT show any target prior to the simulation running!
         // Only when the simulation starts running and the drone comes in the exact grid where
         // the target is present, only then and there will it actually show the target being found.
-        // Initially prior to the simulation being run there should not be a single target highlighted!
         if (!target.found) {
+          targetDiscoveryTimesRef.current.delete(target.target_id);
           return;
         }
-          // Color specifications:
-          // Human: Cyan (#22d3ee)
-          // Vehicle: Purple (#c084fc)
-          // Boat: Cyan-Blue (#38bdf8)
-          // Animal: Red (#ef4444)
-          // Plant: Emerald (#10b981)
-          // Structural / Building: Orange (#f59e0b)
-          const themeColor =
-            target.type === 'HUMAN'
-              ? '#22d3ee' // Cyan
-              : target.type === 'VEHICLE'
-              ? '#c084fc' // Purple
-              : target.type === 'BOAT'
-              ? '#38bdf8' // Cyan-Blue
-              : target.type === 'ANIMAL'
-              ? '#ef4444' // Red
-              : target.type === 'PLANT'
-              ? '#10b981' // Emerald
-              : '#f59e0b'; // Orange
 
-          // 1. Draw corner targeting brackets at [detection.col * cell_width, detection.row * cell_height]
-          const cellX = col * cell_width;
-          const cellY = row * cell_height;
-          const bLen = 8; // Bracket arm length
+        // Register discovery timestamp for dynamic fade-in and pulse shockwave animation
+        const now = performance.now();
+        if (!targetDiscoveryTimesRef.current.has(target.target_id)) {
+          targetDiscoveryTimesRef.current.set(target.target_id, now);
+        }
 
+        const discoveryTime = targetDiscoveryTimesRef.current.get(target.target_id) || now;
+        const elapsedSec = Math.max(0, (now - discoveryTime) / 1000);
+
+        // 1. Smooth Fade-In Alpha (ease-out over initial 600ms)
+        const fadeInProgress = Math.min(1.0, elapsedSec / 0.6);
+        const easeFade = 1 - Math.pow(1 - fadeInProgress, 3);
+
+        ctx.save();
+        ctx.globalAlpha = easeFade;
+
+        // Color specifications:
+        // Human: Cyan (#22d3ee)
+        // Vehicle: Purple (#c084fc)
+        // Boat: Cyan-Blue (#38bdf8)
+        // Animal: Red (#ef4444)
+        // Plant: Emerald (#10b981)
+        // Structural / Building: Orange (#f59e0b)
+        const themeColor =
+          target.type === 'HUMAN'
+            ? '#22d3ee' // Cyan
+            : target.type === 'VEHICLE'
+            ? '#c084fc' // Purple
+            : target.type === 'BOAT'
+            ? '#38bdf8' // Cyan-Blue
+            : target.type === 'ANIMAL'
+            ? '#ef4444' // Red
+            : target.type === 'PLANT'
+            ? '#10b981' // Emerald
+            : '#f59e0b'; // Orange
+
+        const cellX = col * cell_width;
+        const cellY = row * cell_height;
+
+        // 2. Newly Discovered Expanding Sonar Pulse Waves (first 2.6 seconds)
+        if (elapsedSec < 2.6) {
+          const discoveryFade = Math.max(0, 1 - elapsedSec / 2.6);
+
+          // Primary expanding sensor ping ring
+          const wave1 = (elapsedSec % 1.1) / 1.1;
+          const r1 = 8 + wave1 * 40;
+          const a1 = (1 - wave1) * 0.95 * discoveryFade * easeFade;
           ctx.strokeStyle = themeColor;
-          ctx.lineWidth = 2;
-
-          // Top-Left Corner [detection.col * cell_width, detection.row * cell_height]
+          ctx.lineWidth = Math.max(1, 2.5 * (1 - wave1));
+          ctx.globalAlpha = a1;
           ctx.beginPath();
-          ctx.moveTo(cellX, cellY + bLen);
-          ctx.lineTo(cellX, cellY);
-          ctx.lineTo(cellX + bLen, cellY);
-
-          // Top-Right Corner [detection.col * cell_width + cell_width, detection.row * cell_height]
-          ctx.moveTo(cellX + cell_width - bLen, cellY);
-          ctx.lineTo(cellX + cell_width, cellY);
-          ctx.lineTo(cellX + cell_width, cellY + bLen);
-
-          // Bottom-Left Corner [detection.col * cell_width, detection.row * cell_height + cell_height]
-          ctx.moveTo(cellX, cellY + cell_height - bLen);
-          ctx.lineTo(cellX, cellY + cell_height);
-          ctx.lineTo(cellX + bLen, cellY + cell_height);
-
-          // Bottom-Right Corner [detection.col * cell_width + cell_width, detection.row * cell_height + cell_height]
-          ctx.moveTo(cellX + cell_width - bLen, cellY + cell_height);
-          ctx.lineTo(cellX + cell_width, cellY + cell_height);
-          ctx.lineTo(cellX + cell_width, cellY + cell_height - bLen);
+          ctx.arc(target_screen_x, target_screen_y, r1, 0, Math.PI * 2);
           ctx.stroke();
 
-          // Active grid cell subtle highlight wash
-          ctx.fillStyle = `${themeColor}33`;
-          ctx.fillRect(cellX + 1, cellY + 1, cell_width - 2, cell_height - 2);
-
-          // Central pulsing rescue reticle when surveyed / found by drone
-          const pulse = (Math.sin(time * 0.008) + 1) * 2.5;
-          ctx.strokeStyle = themeColor;
-          ctx.lineWidth = 1.8;
+          // Secondary core ripple ring (staggered)
+          const wave2 = ((elapsedSec + 0.55) % 1.1) / 1.1;
+          const r2 = 6 + wave2 * 28;
+          const a2 = (1 - wave2) * 0.8 * discoveryFade * easeFade;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = Math.max(1, 1.8 * (1 - wave2));
+          ctx.globalAlpha = a2;
           ctx.beginPath();
-          ctx.arc(target_screen_x, target_screen_y, 10 + pulse, 0, Math.PI * 2);
+          ctx.arc(target_screen_x, target_screen_y, r2, 0, Math.PI * 2);
           ctx.stroke();
+        }
 
-          // Center crosshair ticks
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(target_screen_x - 5, target_screen_y);
-          ctx.lineTo(target_screen_x + 5, target_screen_y);
-          ctx.moveTo(target_screen_x, target_screen_y - 5);
-          ctx.lineTo(target_screen_x, target_screen_y + 5);
-          ctx.stroke();
+        // Restore globalAlpha for brackets & reticle
+        ctx.globalAlpha = easeFade;
 
-          // 2. Render target label badge ("HUMAN [98%]" in cyan, "VEHICLE [95%]" in purple)
-          const typeUpper =
-            target.type === 'HUMAN'
-              ? 'HUMAN'
-              : target.type === 'VEHICLE'
-              ? 'VEHICLE'
-              : target.type === 'BOAT'
-              ? 'BOAT'
-              : target.type === 'ANIMAL'
-              ? 'ANIMAL'
-              : target.type === 'PLANT'
-              ? 'PLANT'
-              : 'BUILDING';
+        // 3. Tactile Corner Bracket Lock-On (Snaps from 1.45x into cell boundaries during first 0.5s)
+        const snapProg = Math.min(1.0, elapsedSec / 0.5);
+        const bracketScale = snapProg >= 1 ? 1 : 1 + 0.42 * (1 - snapProg) * Math.cos(snapProg * Math.PI * 2.5);
 
-          const probPercent = Math.min(
-            100,
-            Math.max(50, Math.round((target.confidence || 0.98) * 100))
-          );
-          const badgeText = `${typeUpper} [${probPercent}%]`;
+        const halfW = cell_width / 2;
+        const halfH = cell_height / 2;
+        const bCenterX = cellX + halfW;
+        const bCenterY = cellY + halfH;
+        const sCellX = bCenterX - halfW * bracketScale;
+        const sCellY = bCenterY - halfH * bracketScale;
+        const sWidth = cell_width * bracketScale;
+        const sHeight = cell_height * bracketScale;
+        const bLen = Math.max(6, 8 * bracketScale);
 
-          ctx.font = 'bold 9.5px monospace';
-          const textMetric = ctx.measureText(badgeText);
-          const badgeW = Math.max(76, textMetric.width + 12);
-          const badgeH = 15;
-          const badgeX = cellX + cell_width / 2 - badgeW / 2;
-          const badgeY = cellY - badgeH - 3;
+        ctx.strokeStyle = themeColor;
+        ctx.lineWidth = 2;
 
-          // High-contrast dark badge backing
-          ctx.fillStyle = '#090e17';
-          ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+        // Top-Left Corner
+        ctx.beginPath();
+        ctx.moveTo(sCellX, sCellY + bLen);
+        ctx.lineTo(sCellX, sCellY);
+        ctx.lineTo(sCellX + bLen, sCellY);
 
-          // Crisp colored outline matching class
-          ctx.strokeStyle = themeColor;
-          ctx.lineWidth = 1.2;
-          ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+        // Top-Right Corner
+        ctx.moveTo(sCellX + sWidth - bLen, sCellY);
+        ctx.lineTo(sCellX + sWidth, sCellY);
+        ctx.lineTo(sCellX + sWidth, sCellY + bLen);
 
-          // Label text in theme color (cyan for HUMAN, purple for VEHICLE)
-          ctx.fillStyle = themeColor;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(badgeText, cellX + cell_width / 2, badgeY + badgeH / 2 + 0.5);
-        });
+        // Bottom-Left Corner
+        ctx.moveTo(sCellX, sCellY + sHeight - bLen);
+        ctx.lineTo(sCellX, sCellY + sHeight);
+        ctx.lineTo(sCellX + bLen, sCellY + sHeight);
+
+        // Bottom-Right Corner
+        ctx.moveTo(sCellX + sWidth - bLen, sCellY + sHeight);
+        ctx.lineTo(sCellX + sWidth, sCellY + sHeight);
+        ctx.lineTo(sCellX + sWidth, sCellY + sHeight - bLen);
+        ctx.stroke();
+
+        // 4. Radiant Cell Highlight Flash (Illuminates upon discovery, then smoothly settles)
+        const flashFactor = Math.max(0, 1 - elapsedSec / 1.2);
+        const cellWashAlpha = (0.2 + flashFactor * 0.45) * easeFade;
+        ctx.fillStyle = themeColor;
+        ctx.globalAlpha = cellWashAlpha;
+        ctx.fillRect(cellX + 1, cellY + 1, cell_width - 2, cell_height - 2);
+
+        // 5. Central pulsing rescue reticle when surveyed / found by drone
+        ctx.globalAlpha = easeFade;
+        const pulse = (Math.sin(time * 0.008) + 1) * 2.5;
+        const newDiscoveryPulse = elapsedSec < 2.0 ? Math.sin(time * 0.02) * 3 : 0;
+        ctx.strokeStyle = themeColor;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(target_screen_x, target_screen_y, 10 + pulse + newDiscoveryPulse, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Center crosshair ticks
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(target_screen_x - 5, target_screen_y);
+        ctx.lineTo(target_screen_x + 5, target_screen_y);
+        ctx.moveTo(target_screen_x, target_screen_y - 5);
+        ctx.lineTo(target_screen_x, target_screen_y + 5);
+        ctx.stroke();
+
+        // 6. Render target label badge ("HUMAN [98%]" in cyan, "VEHICLE [95%]" in purple)
+        const typeUpper =
+          target.type === 'HUMAN'
+            ? 'HUMAN'
+            : target.type === 'VEHICLE'
+            ? 'VEHICLE'
+            : target.type === 'BOAT'
+            ? 'BOAT'
+            : target.type === 'ANIMAL'
+            ? 'ANIMAL'
+            : target.type === 'PLANT'
+            ? 'PLANT'
+            : 'BUILDING';
+
+        const probPercent = Math.min(
+          100,
+          Math.max(50, Math.round((target.confidence || 0.98) * 100))
+        );
+
+        // Pulse "ACQUIRED" tag during first 2.0 seconds, then settled classification badge
+        const isFreshDiscovery = elapsedSec < 2.0;
+        const badgeText = isFreshDiscovery && Math.sin(time * 0.015) > 0.1
+          ? `● ACQUIRED ${typeUpper}`
+          : `${typeUpper} [${probPercent}%]`;
+
+        ctx.font = 'bold 9.5px monospace';
+        const textMetric = ctx.measureText(badgeText);
+        const badgeW = Math.max(76, textMetric.width + 12);
+        const badgeH = 15;
+        const badgeX = cellX + cell_width / 2 - badgeW / 2;
+        const badgeY = cellY - badgeH - 3;
+
+        // High-contrast dark badge backing
+        ctx.fillStyle = '#090e17';
+        ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+
+        // Crisp colored outline matching class (glows during initial discovery)
+        ctx.strokeStyle = isFreshDiscovery ? '#ffffff' : themeColor;
+        ctx.lineWidth = isFreshDiscovery ? 1.6 : 1.2;
+        ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+
+        // Label text in theme color (or white strobe during acquisition)
+        ctx.fillStyle = isFreshDiscovery ? '#ffffff' : themeColor;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(badgeText, cellX + cell_width / 2, badgeY + badgeH / 2 + 0.5);
+
+        ctx.restore();
+      });
 
       // 11. Draw Radar Cones around active drones
       if (showRadar) {

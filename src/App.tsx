@@ -202,12 +202,12 @@ export const App: React.FC = () => {
         CALAMITY_SCENARIOS.find((s) => s.imageUrl === backgroundImageUrl) ||
         CALAMITY_SCENARIOS[0];
       activeScenario.targets.forEach((t) => {
-        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null };
+        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null, discoveredAt: undefined };
       });
     } else {
       const init = createInitialTargets();
       Object.values(init).forEach((t) => {
-        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null };
+        newTargets[t.target_id] = { ...t, found: false, assigned_drone: null, discoveredAt: undefined };
       });
     }
 
@@ -634,6 +634,7 @@ export const App: React.FC = () => {
             const assignedTask = currentTasks.find((t) => t.task_id === `Z${targetZoneIndex + 1}`);
             if (assignedTask && assignedTask.status === 'DONE') {
               target.found = true;
+              target.discoveredAt = Date.now();
               target.assigned_drone = assignedTask.assigned_drone || `D${targetZoneIndex + 1}`;
               if (!target.confidence || target.confidence < 0.92) {
                 target.confidence =

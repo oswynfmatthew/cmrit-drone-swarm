@@ -1055,6 +1055,7 @@ export function detectTargetsWithSensorFusion(
         };
 
         target.found = true;
+        target.discoveredAt = Date.now();
         if (!target.assigned_drone) {
           target.assigned_drone = drone.drone_id;
         }
