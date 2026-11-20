@@ -48,7 +48,9 @@ export interface Target {
 }
 
 export interface GeminiVisionDetection {
-  label: 'human' | 'vehicle' | 'boat' | 'animal' | string;
+  label: 'human' | 'vehicle' | 'boat' | 'animal' | 'damaged_building' | string;
+  sub_type?: string;
+  description?: string;
   col: number;
   row: number;
   cell_id: number;

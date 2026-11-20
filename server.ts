@@ -64,29 +64,42 @@ app.post('/api/gemini/detect-targets', async (req, res) => {
       },
     };
 
-    const promptText = `You are an autonomous aerial drone search-and-rescue (SAR) detection engine.
+    const promptText = `You are an elite autonomous aerial drone search-and-rescue (SAR) computer vision engine.
 
-The uploaded reconnaissance image is divided into a discrete 600-cell coordinate grid:
-- Grid layout: 30 columns wide (X: 0 to 29) by 20 rows high (Y: 0 to 19).
+The reconnaissance image covers a disaster zone partitioned into a discrete 600-cell coordinate grid:
+- Grid dimensions: exactly 30 columns wide (X / col: 0 to 29) by 20 rows high (Y / row: 0 to 19).
 - Total cells = 600.
-- Cell Index formula: cell_id = (row * 30) + col (range: 0 to 599).
+- Cell index formula: cell_id = (row * 30) + col (range: 0 to 599).
 
-Analyze the uploaded aerial/satellite image and identify all targets belonging to these classes:
-1. "human" (stranded victims on rooftops, balconies, or in water)
-2. "vehicle" (cars, trucks, vans, floating/submerged vehicles)
-3. "boat" (rescue boats, dinghies, rafts)
-4. "animal" (stranded domestic or farm animals)
+SYSTEMATIC MULTI-SECTOR HIGH-RECALL SCAN INSTRUCTIONS:
+Execute an exhaustive, high-recall visual scan across all four quadrants:
+1. Quadrant 1 (North-West: cols 0-14, rows 0-9)
+2. Quadrant 2 (North-East: cols 15-29, rows 0-9)
+3. Quadrant 3 (South-West: cols 0-14, rows 10-19)
+4. Quadrant 4 (South-East: cols 15-29, rows 10-19)
 
-For each detected entity, determine its exact grid square position based on its visual center:
-- "col": Horizontal grid column index (0 to 29)
-- "row": Vertical grid row index (0 to 19)
-- "cell_id": Discrete cell index from 0 to 599
+In each quadrant, carefully examine and pinpoint every target belonging to these categories:
+1. "human":
+   - Rooftop survivors: people on building roofs, apexes, terraces, chimneys, fire escapes, and balconies (including people waving orange tarps, cloths, or distress signals).
+   - Water / drowning victims: individuals in floodwaters, canals, rivers, swirling torrents, or clinging to debris, trees, lampposts, or submerged structures.
+   - Ground evacuees: stranded citizens trapped on porches, isolated mounds, or road edges surrounded by floodwater or rubble.
+2. "vehicle":
+   - Partially submerged, floating, overturned, or angled cars, SUVs, pickup trucks, delivery vans, box trucks, and commuter buses in flooded streets, intersections, and driveways.
+3. "boat":
+   - Swift-water rescue craft, dinghies, inflatable rafts, zodiacs, or civilian flood boats.
+4. "animal":
+   - Stranded domestic pets or farm livestock isolated on high ground, roofs, or porches.
+5. "damaged_building":
+   - Severely damaged structures, collapsed roofs, breached levees, cracked bridges, and impassable rubble piles.
 
-Rules:
-- Do not output markdown text or explanations.
-- If a cluster exists (e.g., several people on one rooftop), output each person with their respective grid cell.
-- If multiple entities occupy the same grid cell, output them as separate entries in the detections array.
-- Carefully scan across the entire 30x20 grid (cols 0-29, rows 0-19) for all visible stranded humans, submerged/parked vehicles, boats, and animals.`;
+ACCURACY & GRID MAPPING RULES:
+- High recall is critical: do NOT miss small or distant individuals on roofs or in murky floodwaters, nor partially visible vehicle roofs/hoods poking through water.
+- Determine the visual center of each detected entity and map to:
+  * "col": Horizontal column index (0 to 29)
+  * "row": Vertical row index (0 to 19)
+  * "cell_id": (row * 30) + col (0 to 599)
+- If a cluster exists (e.g. multiple survivors on a roof or adjacent flooded cars), output each entity with its respective cell coordinates.
+- Output ONLY valid JSON according to the schema without conversational markdown or text outside JSON.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
@@ -95,7 +108,7 @@ Rules:
       },
       config: {
         systemInstruction:
-          'You are an expert autonomous search-and-rescue aerial drone sensor payload processor with high-precision computer vision. Always return valid structured JSON mapping visual targets to the 30x20 (600-cell) discrete coordinate grid.',
+          'You are an expert autonomous search-and-rescue aerial drone sensor payload processor with high-precision computer vision. Always return valid structured JSON mapping visual targets to the 30x20 (600-cell) discrete coordinate grid with high recall for rooftop survivors, drowning victims, submerged vehicles, and disaster targets.',
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -116,7 +129,15 @@ Rules:
                 properties: {
                   label: {
                     type: Type.STRING,
-                    description: 'Target class: "human", "vehicle", "boat", or "animal"',
+                    description: 'Target class: "human", "vehicle", "boat", "animal", or "damaged_building"',
+                  },
+                  sub_type: {
+                    type: Type.STRING,
+                    description: 'Detailed category: "rooftop_human", "drowning_human", "balcony_human", "submerged_vehicle", "stranded_vehicle", "rescue_boat", "animal", "damaged_building"',
+                  },
+                  description: {
+                    type: Type.STRING,
+                    description: 'Brief tactical observation note of target location and condition',
                   },
                   col: {
                     type: Type.INTEGER,
@@ -145,13 +166,30 @@ Rules:
     });
 
     const textOutput = response.text || '{}';
-    let parsedJson;
+    let parsedJson: any;
     try {
       parsedJson = JSON.parse(textOutput);
     } catch {
       // Fallback clean markdown if any
       const cleaned = textOutput.replace(/```json/g, '').replace(/```/g, '').trim();
       parsedJson = JSON.parse(cleaned);
+    }
+
+    // Sanitize and ensure coordinates strictly match 30x20 grid constraints
+    if (parsedJson && Array.isArray(parsedJson.detections)) {
+      parsedJson.detections = parsedJson.detections.map((d: any) => {
+        const col = Math.max(0, Math.min(29, Math.round(Number(d.col) || 0)));
+        const row = Math.max(0, Math.min(19, Math.round(Number(d.row) || 0)));
+        const cell_id = row * 30 + col;
+        const confidence = typeof d.confidence === 'number' ? Math.max(0.5, Math.min(1.0, d.confidence)) : 0.95;
+        return {
+          ...d,
+          col,
+          row,
+          cell_id,
+          confidence,
+        };
+      });
     }
 
     return res.json(parsedJson);

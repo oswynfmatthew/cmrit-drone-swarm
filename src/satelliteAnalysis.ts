@@ -1194,54 +1194,144 @@ export async function detectTargetsWithGeminiVision(
     const cellWidth = CELL;
     const cellHeight = CELL;
 
-    const targets: Target[] = data.detections.map((d: any, idx: number) => {
-      const col = Math.max(0, Math.min(29, Number(d.col) || 0));
-      const row = Math.max(0, Math.min(19, Number(d.row) || 0));
+    // Track occupied cell and type pairs to prevent overlapping stale duplicates
+    const seenByCellAndType = new Map<string, number>();
+
+    const targets: Target[] = [];
+
+    data.detections.forEach((d: any, idx: number) => {
+      const col = Math.max(0, Math.min(29, Math.round(Number(d.col) || 0)));
+      const row = Math.max(0, Math.min(19, Math.round(Number(d.row) || 0)));
       const cell_id =
         typeof d.cell_id === 'number' && d.cell_id >= 0 && d.cell_id < 600
           ? d.cell_id
           : row * 30 + col;
 
-      const target_screen_x = col * cellWidth + cellWidth / 2;
-      const target_screen_y = row * cellHeight + cellHeight / 2;
-
       const rawLabel = String(d.label || 'human').toLowerCase();
+      const rawSub = String(d.sub_type || '').toLowerCase();
+      const rawDesc = String(d.description || '').toLowerCase();
+
       let type: TargetType = 'HUMAN';
       let priority: 'HIGH' | 'MEDIUM' | 'LOW' = 'HIGH';
       let labelText = 'Rooftop Survivor';
       let descText = 'Stranded human detected via Gemini Vision SAR model on 600-cell grid';
 
-      if (rawLabel.includes('vehicle') || rawLabel.includes('car') || rawLabel.includes('truck')) {
+      if (
+        rawLabel.includes('building') ||
+        rawLabel.includes('damage') ||
+        rawLabel.includes('collapse') ||
+        rawLabel.includes('rubble') ||
+        rawSub.includes('building')
+      ) {
+        type = 'BUILDING';
+        priority = 'HIGH';
+        labelText = 'Damaged Building / Structural Collapse';
+        descText = d.description || 'Compromised building facade, collapsed roof, or debris breach';
+      } else if (
+        rawLabel.includes('vehicle') ||
+        rawLabel.includes('car') ||
+        rawLabel.includes('truck') ||
+        rawLabel.includes('van') ||
+        rawLabel.includes('suv')
+      ) {
         type = 'VEHICLE';
         priority = 'MEDIUM';
-        labelText = 'Submerged / Stranded Vehicle';
-        descText = 'Vehicle signature isolated in evacuation grid';
-      } else if (rawLabel.includes('boat') || rawLabel.includes('dinghy') || rawLabel.includes('raft')) {
+        if (
+          rawSub.includes('submerge') ||
+          rawDesc.includes('submerge') ||
+          rawDesc.includes('flood') ||
+          rawDesc.includes('water')
+        ) {
+          labelText = 'Submerged / Flooded Vehicle';
+          descText = d.description || 'Partially submerged vehicle in flooded roadway';
+        } else {
+          labelText = 'Stranded / Abandoned Vehicle';
+          descText = d.description || 'Vehicle signature isolated on evacuation route';
+        }
+      } else if (
+        rawLabel.includes('boat') ||
+        rawLabel.includes('dinghy') ||
+        rawLabel.includes('raft') ||
+        rawLabel.includes('vessel') ||
+        rawSub.includes('boat')
+      ) {
         type = 'BOAT';
         priority = 'HIGH';
         labelText = 'Watercraft / Rescue Boat';
-        descText = 'Rescue craft or vessel identified in water sector';
-      } else if (rawLabel.includes('animal') || rawLabel.includes('livestock') || rawLabel.includes('sheep')) {
+        descText = d.description || 'Rescue craft or vessel identified in water sector';
+      } else if (
+        rawLabel.includes('animal') ||
+        rawLabel.includes('livestock') ||
+        rawLabel.includes('sheep') ||
+        rawLabel.includes('pet') ||
+        rawSub.includes('animal')
+      ) {
         type = 'ANIMAL';
         priority = 'MEDIUM';
         labelText = 'Stranded Animal / Livestock';
-        descText = 'Domestic or farm animal isolated by calamity';
+        descText = d.description || 'Domestic or farm animal isolated by calamity';
       } else {
+        // Human detections: distinguish rooftop vs drowning/water vs balcony
         type = 'HUMAN';
         priority = 'HIGH';
-        labelText = 'Stranded Survivor';
-        descText = 'Person requiring urgent drone swarm extraction';
+        if (
+          rawSub.includes('water') ||
+          rawSub.includes('drown') ||
+          rawDesc.includes('water') ||
+          rawDesc.includes('drown') ||
+          rawDesc.includes('swimming') ||
+          rawDesc.includes('current') ||
+          rawDesc.includes('river')
+        ) {
+          labelText = 'Water Distress / Drowning Victim';
+          descText = d.description || 'Individual in floodwaters or river needing swift-water rescue extraction';
+        } else if (
+          rawSub.includes('balcony') ||
+          rawDesc.includes('balcony') ||
+          rawDesc.includes('porch')
+        ) {
+          labelText = 'Balcony Trapped Resident';
+          descText = d.description || 'Citizen trapped on exterior balcony awaiting extraction';
+        } else if (
+          rawSub.includes('roof') ||
+          rawDesc.includes('roof') ||
+          rawDesc.includes('sos') ||
+          rawDesc.includes('terrace')
+        ) {
+          labelText = 'Rooftop SOS Survivor';
+          descText = d.description || 'Stranded person on roof apex waving distress signal';
+        } else {
+          labelText = 'Stranded Survivor';
+          descText = d.description || 'Stranded person requiring urgent drone swarm extraction';
+        }
       }
+
+      // Filter exact duplicate targets in the exact same cell with same type
+      const cellTypeKey = `${col},${row},${type}`;
+      const duplicateCount = seenByCellAndType.get(cellTypeKey) || 0;
+      if (duplicateCount >= 2) {
+        // Limit to max 2 distinct targets of same type in same cell to prevent clutter
+        return;
+      }
+      seenByCellAndType.set(cellTypeKey, duplicateCount + 1);
+
+      // Micro pixel offset if 2 targets share the exact cell (cluster presentation)
+      const offsetX = duplicateCount === 1 ? 6 : 0;
+      const offsetY = duplicateCount === 1 ? -6 : 0;
+      const target_screen_x = col * cellWidth + cellWidth / 2 + offsetX;
+      const target_screen_y = row * cellHeight + cellHeight / 2 + offsetY;
 
       const conf =
         typeof d.confidence === 'number'
-          ? Math.max(0.5, Math.min(1.0, d.confidence))
+          ? Math.max(0.6, Math.min(1.0, d.confidence))
           : type === 'VEHICLE'
-          ? 0.95
-          : 0.98;
+          ? 0.96
+          : type === 'HUMAN'
+          ? 0.98
+          : 0.95;
 
-      return {
-        target_id: `T${idx + 1}`,
+      targets.push({
+        target_id: `T${targets.length + 1}`,
         x: col,
         y: row,
         col,
@@ -1266,7 +1356,7 @@ export async function detectTargetsWithGeminiVision(
           w: cellWidth + 8,
           h: cellHeight + 8,
         },
-      };
+      });
     });
 
     return targets;
@@ -1371,6 +1461,12 @@ function fallbackContrastScanner(
       type: 'BOAT',
       label: 'Rescue Boat / Float Craft',
       desc: 'Emergency watercraft detected in flood evacuation zone.',
+      priority: 'HIGH',
+    },
+    {
+      type: 'BUILDING',
+      label: 'Damaged Building / Structural Breach',
+      desc: 'Severely damaged structure or collapsed roof detected in disaster quadrant.',
       priority: 'HIGH',
     },
   ];
