@@ -33,4 +33,4 @@ npm install
 npm run dev
 ```
 
-Server runs on `http://0.0.0.0:3000`.
+Server runs on `http://localhost:3000`.
