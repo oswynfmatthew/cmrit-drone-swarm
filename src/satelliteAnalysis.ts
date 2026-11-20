@@ -1157,10 +1157,10 @@ CALAMITY_SCENARIOS.forEach((scenario) => {
         target.type === 'VEHICLE'
           ? 1.0
           : target.type === 'HUMAN'
-          ? 0.98
-          : target.type === 'ANIMAL'
-          ? 0.96
-          : 0.99;
+            ? 0.98
+            : target.type === 'ANIMAL'
+              ? 0.96
+              : 0.99;
     }
   });
 });
@@ -1199,7 +1199,7 @@ export async function detectTargetsWithGeminiVision(
 
     const targets: Target[] = [];
 
-    data.detections.forEach((d: any, idx: number) => {
+    data.detections.forEach((d: any) => {
       const col = Math.max(0, Math.min(29, Math.round(Number(d.col) || 0)));
       const row = Math.max(0, Math.min(19, Math.round(Number(d.row) || 0)));
       const cell_id =
@@ -1325,10 +1325,10 @@ export async function detectTargetsWithGeminiVision(
         typeof d.confidence === 'number'
           ? Math.max(0.6, Math.min(1.0, d.confidence))
           : type === 'VEHICLE'
-          ? 0.96
-          : type === 'HUMAN'
-          ? 0.98
-          : 0.95;
+            ? 0.96
+            : type === 'HUMAN'
+              ? 0.98
+              : 0.95;
 
       targets.push({
         target_id: `T${targets.length + 1}`,
@@ -1433,43 +1433,43 @@ function fallbackContrastScanner(
     desc: string;
     priority: 'HIGH' | 'MEDIUM' | 'LOW';
   }[] = [
-    {
-      type: 'HUMAN',
-      label: 'Identified Survivor / Rooftop Evacuee',
-      desc: 'Person detected by aerial computer vision needing urgent drone swarm extraction.',
-      priority: 'HIGH',
-    },
-    {
-      type: 'HUMAN',
-      label: 'Trapped Citizen Signaling Distress',
-      desc: 'Survivor detected in disaster zone waving high-contrast marker.',
-      priority: 'HIGH',
-    },
-    {
-      type: 'ANIMAL',
-      label: 'Trapped Animal / Domestic Livestock',
-      desc: 'Livestock signature isolated by disaster inundation/debris.',
-      priority: 'MEDIUM',
-    },
-    {
-      type: 'VEHICLE',
-      label: 'Stranded Transport / Emergency Craft',
-      desc: 'Stationary vehicle detected in disaster evacuation sector.',
-      priority: 'MEDIUM',
-    },
-    {
-      type: 'BOAT',
-      label: 'Rescue Boat / Float Craft',
-      desc: 'Emergency watercraft detected in flood evacuation zone.',
-      priority: 'HIGH',
-    },
-    {
-      type: 'BUILDING',
-      label: 'Damaged Building / Structural Breach',
-      desc: 'Severely damaged structure or collapsed roof detected in disaster quadrant.',
-      priority: 'HIGH',
-    },
-  ];
+      {
+        type: 'HUMAN',
+        label: 'Identified Survivor / Rooftop Evacuee',
+        desc: 'Person detected by aerial computer vision needing urgent drone swarm extraction.',
+        priority: 'HIGH',
+      },
+      {
+        type: 'HUMAN',
+        label: 'Trapped Citizen Signaling Distress',
+        desc: 'Survivor detected in disaster zone waving high-contrast marker.',
+        priority: 'HIGH',
+      },
+      {
+        type: 'ANIMAL',
+        label: 'Trapped Animal / Domestic Livestock',
+        desc: 'Livestock signature isolated by disaster inundation/debris.',
+        priority: 'MEDIUM',
+      },
+      {
+        type: 'VEHICLE',
+        label: 'Stranded Transport / Emergency Craft',
+        desc: 'Stationary vehicle detected in disaster evacuation sector.',
+        priority: 'MEDIUM',
+      },
+      {
+        type: 'BOAT',
+        label: 'Rescue Boat / Float Craft',
+        desc: 'Emergency watercraft detected in flood evacuation zone.',
+        priority: 'HIGH',
+      },
+      {
+        type: 'BUILDING',
+        label: 'Damaged Building / Structural Breach',
+        desc: 'Severely damaged structure or collapsed roof detected in disaster quadrant.',
+        priority: 'HIGH',
+      },
+    ];
 
   return selectedPoints.map((pt, idx) => {
     const tmpl = categoryTemplates[idx % categoryTemplates.length];
