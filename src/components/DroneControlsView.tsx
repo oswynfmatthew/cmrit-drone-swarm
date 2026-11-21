@@ -472,14 +472,16 @@ export const DroneControlsView: React.FC<DroneControlsViewProps> = ({
                             className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${
                               target.type === 'HUMAN'
                                 ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                                : target.type === 'ANIMAL'
-                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : target.type === 'ANIMAL' || target.type === 'BROKEN_DAM'
+                                ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                                : target.type === 'BROKEN_INFRASTRUCTURE'
+                                ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
                                 : target.type === 'VEHICLE'
                                 ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
                                 : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                             }`}
                           >
-                            {target.type} [{prob}%]
+                            {target.type.replace(/_/g, ' ')} [{prob}%]
                           </span>
                         </span>
 

@@ -416,14 +416,16 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                               ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
                               : target.type === 'BOAT'
                               ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                              : target.type === 'ANIMAL'
-                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : target.type === 'ANIMAL' || target.type === 'BROKEN_DAM'
+                              ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                              : target.type === 'BROKEN_INFRASTRUCTURE'
+                              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
                               : target.type === 'PLANT'
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                               : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                           }`}
                         >
-                          {target.type} [{prob}%]
+                          {target.type.replace(/_/g, ' ')} [{prob}%]
                         </span>
                       </span>
 
@@ -454,8 +456,10 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                         <span className="text-slate-400">Priority Level:</span>
                         <span
                           className={
-                            target.type === 'HUMAN'
+                            target.type === 'HUMAN' || target.type === 'BROKEN_DAM'
                               ? 'text-rose-400 font-bold'
+                              : target.type === 'BROKEN_INFRASTRUCTURE'
+                              ? 'text-yellow-400 font-bold'
                               : target.type === 'VEHICLE'
                               ? 'text-sky-400 font-bold'
                               : target.type === 'PLANT'
@@ -463,8 +467,10 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                               : 'text-amber-500 font-bold'
                           }
                         >
-                          {target.type === 'HUMAN'
+                          {target.type === 'HUMAN' || target.type === 'BROKEN_DAM'
                             ? 'HIGH'
+                            : target.type === 'BROKEN_INFRASTRUCTURE'
+                            ? target.priority
                             : target.type === 'VEHICLE'
                             ? 'MEDIUM'
                             : target.type === 'ANIMAL'
@@ -587,6 +593,8 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
               >
                 <option value="HUMAN">HUMAN (Survivors / Evacuees)</option>
                 <option value="VEHICLE">VEHICLE (Cars, Trucks, Boats)</option>
+                <option value="BROKEN_DAM">BROKEN DAM (Critical Levee Breach)</option>
+                <option value="BROKEN_INFRASTRUCTURE">BROKEN INFRASTRUCTURE (Damaged Structure)</option>
                 <option value="BUILDING">BUILDING (Structural Damage)</option>
                 <option value="PLANT">PLANT (Environmental Recon)</option>
                 <option value="ANIMAL">ANIMAL (Livestock & Wildlife)</option>
@@ -710,21 +718,25 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                               ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
                               : t.type === 'VEHICLE'
                               ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                              : t.type === 'ANIMAL'
-                              ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              : t.type === 'ANIMAL' || t.type === 'BROKEN_DAM'
+                              ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                              : t.type === 'BROKEN_INFRASTRUCTURE'
+                              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
                               : t.type === 'PLANT'
                               ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                               : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                           }`}
                         >
-                          {t.type}
+                          {t.type.replace(/_/g, ' ')}
                         </span>
                       </td>
                       <td className="py-2 px-3">
                         <span
                           className={
-                            t.type === 'HUMAN'
+                            t.type === 'HUMAN' || t.type === 'BROKEN_DAM'
                               ? 'text-rose-400 font-bold'
+                              : t.type === 'BROKEN_INFRASTRUCTURE'
+                              ? 'text-yellow-400 font-bold'
                               : t.type === 'VEHICLE'
                               ? 'text-sky-400 font-bold'
                               : t.type === 'PLANT'
@@ -732,8 +744,10 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                               : 'text-amber-500 font-bold'
                           }
                         >
-                          {t.type === 'HUMAN'
+                          {t.type === 'HUMAN' || t.type === 'BROKEN_DAM'
                             ? 'HIGH'
+                            : t.type === 'BROKEN_INFRASTRUCTURE'
+                            ? t.priority
                             : t.type === 'VEHICLE'
                             ? 'MEDIUM'
                             : t.type === 'ANIMAL'

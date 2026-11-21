@@ -381,7 +381,8 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
         // Human: Cyan (#22d3ee)
         // Vehicle: Purple (#c084fc)
         // Boat: Cyan-Blue (#38bdf8)
-        // Animal: Red (#ef4444)
+        // Animal / Broken Dam: Red (#ef4444)
+        // Broken Infrastructure: Yellow (#facc15)
         // Plant: Emerald (#10b981)
         // Structural / Building: Orange (#f59e0b)
         const themeColor =
@@ -391,8 +392,10 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             ? '#c084fc' // Purple
             : target.type === 'BOAT'
             ? '#38bdf8' // Cyan-Blue
-            : target.type === 'ANIMAL'
+            : target.type === 'ANIMAL' || target.type === 'BROKEN_DAM'
             ? '#ef4444' // Red
+            : target.type === 'BROKEN_INFRASTRUCTURE'
+            ? '#facc15' // Yellow
             : target.type === 'PLANT'
             ? '#10b981' // Emerald
             : '#f59e0b'; // Orange
@@ -520,6 +523,10 @@ export const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             ? 'BOAT'
             : target.type === 'ANIMAL'
             ? 'ANIMAL'
+            : target.type === 'BROKEN_DAM'
+            ? 'BROKEN DAM'
+            : target.type === 'BROKEN_INFRASTRUCTURE'
+            ? 'BROKEN INFRASTRUCTURE'
             : target.type === 'PLANT'
             ? 'PLANT'
             : 'BUILDING';

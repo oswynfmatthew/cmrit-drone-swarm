@@ -1,8 +1,17 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+
+if (fs.existsSync('.env') && typeof (process as any).loadEnvFile === 'function') {
+  try {
+    (process as any).loadEnvFile('.env');
+  } catch {
+    // Ignore optional .env load failure
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

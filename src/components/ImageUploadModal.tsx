@@ -587,6 +587,10 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
                           ? 'border-purple-500/40 text-purple-300 bg-purple-950/30'
                           : t.type === 'BOAT'
                           ? 'border-sky-500/40 text-sky-300 bg-sky-950/30'
+                          : t.type === 'BROKEN_DAM'
+                          ? 'border-red-500/40 text-red-300 bg-red-950/30'
+                          : t.type === 'BROKEN_INFRASTRUCTURE'
+                          ? 'border-yellow-500/40 text-yellow-300 bg-yellow-950/30'
                           : t.type === 'STRUCTURAL_CRACK' || t.type === 'ANOMALY'
                           ? 'border-amber-500/40 text-amber-300 bg-amber-950/30'
                           : 'border-rose-500/40 text-rose-300 bg-rose-950/30';
@@ -597,7 +601,7 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
                           className={`text-[10px] font-mono px-2 py-0.5 rounded border flex items-center gap-1 ${badgeColor}`}
                         >
                           <Crosshair className="w-2.5 h-2.5" />
-                          <span className="font-bold">{t.type} [{conf}%]</span>
+                          <span className="font-bold">{t.type.replace(/_/g, ' ')} [{conf}%]</span>
                           <span className="opacity-70">cell #{cell_id} ({col},{row})</span>
                         </span>
                       );

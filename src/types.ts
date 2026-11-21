@@ -16,6 +16,8 @@ export type TargetType =
   | 'ANIMAL'
   | 'VEHICLE'
   | 'BOAT'
+  | 'BROKEN_DAM'
+  | 'BROKEN_INFRASTRUCTURE'
   | 'STRUCTURAL_CRACK'
   | 'ANOMALY'
   | 'PLANT'
