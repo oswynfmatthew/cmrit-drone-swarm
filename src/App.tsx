@@ -251,13 +251,15 @@ export const App: React.FC = () => {
       setLastCommand(cmd);
 
       if (cmd === 'START') {
+        const wasReady = missionStatusRef.current === 'READY';
         setMissionStatus('ACTIVE');
+        missionStatusRef.current = 'ACTIVE';
         logEvent('MISSION_STARTED_AUTONOMOUS_SLAM_ENGAGED');
 
         const currentTasks = tasksRef.current;
         const currentDrones = { ...dronesRef.current };
 
-        if (currentTasks.every((t) => t.status === 'PENDING')) {
+        if (wasReady || currentTasks.every((t) => t.status === 'PENDING')) {
           assignTasks(currentTasks, currentDrones, CELL, blockedRef.current);
           setTasks([...currentTasks]);
           setDrones({ ...currentDrones });
@@ -276,11 +278,14 @@ export const App: React.FC = () => {
       } else if (cmd === 'RESUME') {
         setMissionStatus('ACTIVE');
         const currentDrones = { ...dronesRef.current };
+        const currentTasks = [...tasksRef.current];
         Object.values(currentDrones).forEach((d) => {
-          if (d.healthy && d.status === 'PAUSED') {
+          if (d.healthy && (d.status === 'PAUSED' || (d.task_id !== null && ['IDLE', 'COMPLETED'].includes(d.status)))) {
             d.status = 'SEARCHING';
           }
         });
+        assignTasks(currentTasks, currentDrones, CELL, blockedRef.current);
+        setTasks(currentTasks);
         setDrones({ ...currentDrones });
         logEvent('MISSION_RESUMED');
       } else if (cmd.startsWith('FAIL_') || cmd.startsWith('FAIL_DRONE:')) {
@@ -306,10 +311,14 @@ export const App: React.FC = () => {
             drone.status = 'IDLE';
             drone.battery = 100.0;
             drone.speed = 80.0;
+            drone.path = [];
             logEvent(`DRONE_${droneId}_RESTORED_TO_FLEET`);
 
-            if (missionStatusRef.current === 'ACTIVE') {
+            if (missionStatusRef.current === 'ACTIVE' || missionStatusRef.current === 'PAUSED') {
               assignTasks(currentTasks, currentDrones, CELL, blockedRef.current);
+              if (missionStatusRef.current === 'PAUSED' && currentDrones[droneId].task_id !== null) {
+                currentDrones[droneId].status = 'PAUSED';
+              }
               setTasks(currentTasks);
             }
             setDrones({ ...currentDrones });
@@ -387,10 +396,14 @@ export const App: React.FC = () => {
         drone.status = 'IDLE';
         drone.battery = 100.0;
         drone.speed = 80.0;
+        drone.path = [];
         logEvent(`DRONE_${droneId}_RESTORED_TO_FLEET`);
 
-        if (missionStatusRef.current === 'ACTIVE') {
+        if (missionStatusRef.current === 'ACTIVE' || missionStatusRef.current === 'PAUSED') {
           assignTasks(currentTasks, currentDrones, CELL, blockedRef.current);
+          if (missionStatusRef.current === 'PAUSED' && currentDrones[droneId].task_id !== null) {
+            currentDrones[droneId].status = 'PAUSED';
+          }
           setTasks(currentTasks);
         }
         setDrones({ ...currentDrones });
@@ -649,7 +662,8 @@ export const App: React.FC = () => {
         // 5b. Zone sweep guarantee: Once an assigned zone sweep is 100% completed, verify any remaining targets in that zone
         for (const target of Object.values(currentTargets)) {
           if (!target.found) {
-            const targetZoneIndex = Math.min(4, Math.floor(target.x / 6));
+            const targetCol = target.col !== undefined ? target.col : target.x;
+            const targetZoneIndex = Math.max(0, Math.min(4, Math.floor(targetCol / 6)));
             const assignedTask = currentTasks.find((t) => t.task_id === `Z${targetZoneIndex + 1}`);
             if (assignedTask && assignedTask.status === 'DONE') {
               target.found = true;
@@ -869,12 +883,16 @@ export const App: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {Object.values(drones).map((d, dIdx) => {
-                  const droneTask = tasks.find((t) => t.assigned_drone === d.drone_id);
+                  const assignedTasks = tasks.filter((t) => t.assigned_drone === d.drone_id);
+                  const droneTask =
+                    assignedTasks.find((t) => t.status !== 'DONE') || assignedTasks[0];
                   const isDroneFailed = !d.healthy || d.status === 'FAILED';
                   const isTaskDone =
-                    (droneTask && droneTask.status === 'DONE') ||
-                    d.status === 'COMPLETED' ||
-                    missionStatus === 'COMPLETE';
+                    (!isDroneFailed && d.status === 'COMPLETED' && missionStatus !== 'READY') ||
+                    missionStatus === 'COMPLETE' ||
+                    (assignedTasks.length > 0 &&
+                      assignedTasks.every((t) => t.status === 'DONE') &&
+                      d.status !== 'SEARCHING');
                   const zoneProgress = isDroneFailed
                     ? 0
                     : isTaskDone
