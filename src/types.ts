@@ -138,6 +138,7 @@ export interface Drone {
   status: DroneStatus;
   task_id: string | null;
   task_queue: string[];
+  sweep_cells?: Point[];
   path: Point[];
   searched_cells: number;
   distance_travelled: number;

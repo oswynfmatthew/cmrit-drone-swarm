@@ -580,131 +580,235 @@ export function updateMeshNetwork(drones: Record<string, Drone>): void {
   }
 }
 
-// Strictly assign each zone Z1..Z5 to its dedicated drone D1..D5 (only falling back if home drone failed)
-export function assignTasks(
+// Track exact visited cells per zone task so multiple compensating drones can sweep a failed zone out-of-order
+const taskVisitedMap = new WeakMap<Task, Set<string>>();
+
+function getVisitedSet(task: Task): Set<string> {
+  let visited = taskVisitedMap.get(task);
+  if (!visited) {
+    visited = new Set<string>();
+    for (let i = 0; i < Math.min(task.progress, task.cells.length); i++) {
+      visited.add(pointKey(task.cells[i]));
+    }
+    taskVisitedMap.set(task, visited);
+  }
+  return visited;
+}
+
+function getZoneIndexForTask(taskId: string): number {
+  if (!taskId.startsWith('Z')) return 0;
+  return Math.max(0, Math.min(4, Number(taskId.slice(1)) - 1));
+}
+
+function getDroneHomeCenterCol(droneId: string): number {
+  const idx = Math.max(0, Math.min(4, Number(droneId.slice(1)) - 1));
+  return idx * 6 + 2.5;
+}
+
+function orderSerpentineCells(cells: Point[], startX: number): Point[] {
+  if (cells.length <= 1) return [...cells];
+
+  const rowsMap = new Map<number, number[]>();
+  for (const [cx, cy] of cells) {
+    let rowCols = rowsMap.get(cy);
+    if (!rowCols) {
+      rowCols = [];
+      rowsMap.set(cy, rowCols);
+    }
+    rowCols.push(cx);
+  }
+
+  // Bottom-to-top row order matching swarm upward reconnaissance sweep
+  const sortedRows = Array.from(rowsMap.keys()).sort((a, b) => b - a);
+  const ordered: Point[] = [];
+
+  sortedRows.forEach((y, stepIdx) => {
+    const cols = rowsMap.get(y)!.sort((a, b) => a - b);
+    let reverse = stepIdx % 2 === 1;
+    if (stepIdx === 0 && cols.length > 1) {
+      const distLeft = Math.abs(cols[0] - startX);
+      const distRight = Math.abs(cols[cols.length - 1] - startX);
+      reverse = distRight < distLeft;
+    }
+    if (reverse) {
+      for (let i = cols.length - 1; i >= 0; i--) {
+        ordered.push([cols[i], y]);
+      }
+    } else {
+      for (let i = 0; i < cols.length; i++) {
+        ordered.push([cols[i], y]);
+      }
+    }
+  });
+
+  return ordered;
+}
+
+// Rebalance active zone coverage across healthy drones:
+// - When all drones D1..D5 are healthy, each stays strictly in its own zone Z1..Z5.
+// - Whenever any drone fails, remaining healthy drones immediately absorb and sweep
+//   its uncovered cells side-by-side without waiting for their own zones to finish first.
+export function rebalanceSwarmCoverage(
   tasks: Task[],
-  drones: Record<string, Drone>,
-  cellSize: number,
-  _blocked?: Set<string>
+  drones: Record<string, Drone>
 ): void {
-  const available = Object.values(drones).filter(
-    (d) => d.healthy && d.status !== 'FAILED' && d.status !== 'COMPLETED'
+  const healthy = Object.values(drones).filter(
+    (d) => d.healthy && !['FAILED', 'LOW_BATTERY', 'RETURNING'].includes(d.status)
   );
 
-  // Pass 1: Strict 1-to-1 home-zone lock (Z1 -> D1, Z2 -> D2, Z3 -> D3, Z4 -> D4, Z5 -> D5)
+  // Sync each task's progress & DONE status from actual visited cells first
   for (const task of tasks) {
-    if (task.status === 'DONE' || task.status === 'ACTIVE' || task.cells.length === 0) {
+    if (task.cells.length === 0) continue;
+    const visited = getVisitedSet(task);
+    task.progress = Math.min(task.cells.length, visited.size);
+    if (task.progress >= task.cells.length) {
+      task.status = 'DONE';
+    }
+  }
+
+  if (healthy.length === 0) {
+    for (const d of Object.values(drones)) {
+      d.sweep_cells = [];
+      d.task_queue = [];
+      if (!d.healthy) {
+        d.task_id = null;
+      }
+    }
+    return;
+  }
+
+  const assignedCellsByDrone = new Map<string, Point[]>();
+  const primaryTaskByDrone = new Map<string, string | null>();
+  const queueByDrone = new Map<string, string[]>();
+
+  for (const d of healthy) {
+    assignedCellsByDrone.set(d.drone_id, []);
+    primaryTaskByDrone.set(d.drone_id, null);
+    queueByDrone.set(d.drone_id, []);
+  }
+
+  const orphanedTasks: { task: Task; remaining: Point[] }[] = [];
+
+  // Pass 1: Keep every healthy home drone strictly locked onto its own home zone's remaining cells
+  for (const task of tasks) {
+    if (task.status === 'DONE' || task.cells.length === 0) continue;
+
+    const visited = getVisitedSet(task);
+    const remaining = task.cells.filter((c) => !visited.has(pointKey(c)));
+    if (remaining.length === 0) {
+      task.status = 'DONE';
+      task.progress = task.cells.length;
       continue;
     }
 
     const expectedDroneId = task.task_id.startsWith('Z') ? `D${task.task_id.slice(1)}` : null;
-    if (expectedDroneId) {
-      const homeIdx = available.findIndex((d) => d.drone_id === expectedDroneId);
-      if (homeIdx !== -1) {
-        const homeDrone = available[homeIdx];
-        task.assigned_drone = homeDrone.drone_id;
-        task.status = 'ACTIVE';
-        homeDrone.task_queue.push(task.task_id);
-        if (homeDrone.task_id === null) {
-          homeDrone.task_id = task.task_id;
-          homeDrone.status = 'SEARCHING';
-        }
-        available.splice(homeIdx, 1);
-      }
+    const homeDrone = expectedDroneId ? healthy.find((d) => d.drone_id === expectedDroneId) : undefined;
+
+    if (homeDrone) {
+      task.assigned_drone = homeDrone.drone_id;
+      task.status = 'ACTIVE';
+      assignedCellsByDrone.get(homeDrone.drone_id)!.push(...remaining);
+      primaryTaskByDrone.set(homeDrone.drone_id, task.task_id);
+      queueByDrone.get(homeDrone.drone_id)!.push(task.task_id);
+    } else {
+      orphanedTasks.push({ task, remaining });
     }
   }
 
-  // Pass 2: Fallback assignment only if a zone's home drone is FAILED or unavailable
-  for (const task of tasks) {
-    if (task.status === 'DONE' || task.status === 'ACTIVE' || task.cells.length === 0) {
-      continue;
+  // Pass 2: Immediately split every orphaned/failed drone zone across nearest healthy drones
+  for (const { task, remaining } of orphanedTasks) {
+    const shareCountByDrone = new Map<string, number>();
+    for (const d of healthy) shareCountByDrone.set(d.drone_id, 0);
+
+    for (const cell of remaining) {
+      const [cx] = cell;
+      let bestDrone = healthy[0];
+      let bestScore = Infinity;
+
+      for (const candidate of healthy) {
+        const currentLoad = assignedCellsByDrone.get(candidate.drone_id)!.length;
+        const colDist = Math.abs(cx - getDroneHomeCenterCol(candidate.drone_id));
+        const score = currentLoad * 0.14 + colDist;
+        if (score < bestScore) {
+          bestScore = score;
+          bestDrone = candidate;
+        }
+      }
+
+      assignedCellsByDrone.get(bestDrone.drone_id)!.push(cell);
+      shareCountByDrone.set(
+        bestDrone.drone_id,
+        (shareCountByDrone.get(bestDrone.drone_id) || 0) + 1
+      );
     }
-    if (available.length === 0) break;
 
-    const score = (drone: Drone): number => {
-      const startCell: Point = [
-        Math.floor(drone.x / cellSize),
-        Math.floor(drone.y / cellSize),
-      ];
-      const first =
-        task.progress < task.cells.length
-          ? task.cells[task.progress]
-          : task.cells[task.cells.length - 1];
-      const batteryPenalty = Math.max(0.0, 30.0 - drone.battery) * 2.0;
-      return distance(startCell, first) + batteryPenalty + drone.searched_cells * 0.02;
-    };
-
-    let bestDrone = available[0];
-    let bestScore = score(bestDrone);
-
-    for (let i = 1; i < available.length; i++) {
-      const s = score(available[i]);
-      if (s < bestScore) {
-        bestScore = s;
-        bestDrone = available[i];
+    // Track primary compensating drone on the orphaned task for telemetry & UI
+    let topCompensator = healthy[0].drone_id;
+    let maxShared = -1;
+    for (const d of healthy) {
+      const count = shareCountByDrone.get(d.drone_id) || 0;
+      if (count > 0) {
+        const q = queueByDrone.get(d.drone_id)!;
+        if (!q.includes(task.task_id)) q.push(task.task_id);
+        if (!primaryTaskByDrone.get(d.drone_id)) {
+          primaryTaskByDrone.set(d.drone_id, task.task_id);
+        }
+      }
+      if (count > maxShared) {
+        maxShared = count;
+        topCompensator = d.drone_id;
       }
     }
 
-    task.assigned_drone = bestDrone.drone_id;
+    task.assigned_drone = topCompensator;
     task.status = 'ACTIVE';
-    bestDrone.task_queue.push(task.task_id);
+  }
 
-    if (bestDrone.task_id === null) {
-      bestDrone.task_id = task.task_id;
-      bestDrone.status = 'SEARCHING';
+  // Pass 3: Build smooth serpentine sweep paths and update drone statuses
+  for (const d of healthy) {
+    const cells = assignedCellsByDrone.get(d.drone_id) || [];
+    const currentGridX = Math.floor(d.x / CELL);
+    d.sweep_cells = orderSerpentineCells(cells, currentGridX);
+    d.task_queue = queueByDrone.get(d.drone_id) || [];
+    d.task_id = primaryTaskByDrone.get(d.drone_id) || null;
+    d.path = [];
+
+    if (d.sweep_cells.length > 0) {
+      if (d.status !== 'PAUSED') {
+        d.status = 'SEARCHING';
+      }
+    } else {
+      d.task_id = null;
+      d.status = 'COMPLETED';
     }
-
-    const removeIdx = available.indexOf(bestDrone);
-    if (removeIdx !== -1) available.splice(removeIdx, 1);
   }
 }
 
-// Reassign tasks when a drone fails
+// Strictly assign each zone Z1..Z5 to its dedicated drone D1..D5 (falling back to healthy swarm peers if home drone failed)
+export function assignTasks(
+  tasks: Task[],
+  drones: Record<string, Drone>,
+  _cellSize: number,
+  _blocked?: Set<string>
+): void {
+  rebalanceSwarmCoverage(tasks, drones);
+}
+
+// Reassign all incomplete coverage from a failed drone immediately across healthy peers
 export function reassignFailedDrone(
   tasks: Task[],
   drones: Record<string, Drone>,
   failedId: string
 ): void {
-  const affected = tasks.filter(
-    (t) => t.assigned_drone === failedId && t.status !== 'DONE'
-  );
-
   const failedDrone = drones[failedId];
   if (failedDrone) {
     failedDrone.task_id = null;
     failedDrone.task_queue = [];
+    failedDrone.sweep_cells = [];
+    failedDrone.path = [];
   }
 
-  for (const task of affected) {
-    task.assigned_drone = null;
-    task.status = 'PENDING';
-  }
-
-  const healthy = Object.values(drones).filter(
-    (d) => d.healthy && d.status !== 'FAILED' && d.status !== 'COMPLETED'
-  );
-
-  for (const task of affected) {
-    if (healthy.length === 0) break;
-
-    let chosen = healthy[0];
-    for (let i = 1; i < healthy.length; i++) {
-      if (healthy[i].task_queue.length < chosen.task_queue.length) {
-        chosen = healthy[i];
-      }
-    }
-
-    task.assigned_drone = chosen.drone_id;
-    task.status = 'ACTIVE';
-    chosen.task_queue.push(task.task_id);
-
-    if (chosen.task_id === null) {
-      chosen.task_id = task.task_id;
-    }
-    if (['IDLE', 'RETURNING', 'LOW_BATTERY', 'AVOIDING'].includes(chosen.status)) {
-      chosen.status = 'SEARCHING';
-    }
-  }
+  rebalanceSwarmCoverage(tasks, drones);
 }
 
 // Avoid nearby drones (wait/avoidance arbitration)
@@ -734,24 +838,55 @@ export function avoidanceWaitIds(
   return waitIds;
 }
 
-// Build A* path strictly inside the drone's assigned zone corridor when inside its zone
+// Build A* path within the drone's assigned sweep corridor (strict 6-col zone when all drones healthy,
+// automatically expanded to include absorbed failed-drone columns during compensation)
 export function buildPathForTask(
   drone: Drone,
   task: Task,
   blocked: Set<string>
 ): Point[] {
-  if (task.cells.length === 0) return [];
+  const sweepCells = drone.sweep_cells && drone.sweep_cells.length > 0 ? drone.sweep_cells : task.cells;
+  if (sweepCells.length === 0) return [];
+
   const current: Point = [Math.floor(drone.x / CELL), Math.floor(drone.y / CELL)];
 
-  // Determine zone column corridor for Z1..Z5 (each 6 columns wide)
-  let zoneBounds: [number, number] | undefined;
-  if (task.task_id.startsWith('Z')) {
-    const zIdx = Math.max(0, Math.min(4, Number(task.task_id.slice(1)) - 1));
-    const minX = zIdx * 6;
-    const maxX = zIdx === 4 ? GRID_W - 1 : minX + 5;
-    if (current[0] >= minX && current[0] <= maxX) {
-      zoneBounds = [minX, maxX];
+  let minX = GRID_W - 1;
+  let maxX = 0;
+  for (const [cx] of sweepCells) {
+    if (cx < minX) minX = cx;
+    if (cx > maxX) maxX = cx;
+  }
+  const zoneBounds: [number, number] | undefined =
+    current[0] >= minX && current[0] <= maxX ? [minX, maxX] : undefined;
+
+  if (drone.sweep_cells && drone.sweep_cells.length > 0) {
+    while (drone.sweep_cells.length > 0) {
+      const goal = drone.sweep_cells[0];
+      const distToGoal = Math.hypot(
+        drone.x / CELL - (goal[0] + 0.5),
+        drone.y / CELL - (goal[1] + 0.5)
+      );
+
+      if (distToGoal <= 0.55) {
+        drone.sweep_cells.shift();
+        continue;
+      }
+
+      const path = astar(current, goal, blocked, GRID_W, GRID_H, zoneBounds);
+      if (path.length > 0) {
+        return path;
+      }
+
+      if (zoneBounds) {
+        const unrestrictedPath = astar(current, goal, blocked, GRID_W, GRID_H);
+        if (unrestrictedPath.length > 0) {
+          return unrestrictedPath;
+        }
+      }
+
+      drone.sweep_cells.shift();
     }
+    return [];
   }
 
   while (task.progress < task.cells.length) {
@@ -761,8 +896,7 @@ export function buildPathForTask(
       drone.y / CELL - (goal[1] + 0.5)
     );
 
-    // If drone is already at or very close to this waypoint, advance
-    if (distToGoal <= 0.65) {
+    if (distToGoal <= 0.55) {
       task.progress += 1;
       continue;
     }
@@ -772,7 +906,6 @@ export function buildPathForTask(
       return path;
     }
 
-    // Fallback without corridor bounds only if obstacle blocks internal zone route
     if (zoneBounds) {
       const unrestrictedPath = astar(current, goal, blocked, GRID_W, GRID_H);
       if (unrestrictedPath.length > 0) {
@@ -853,54 +986,130 @@ export function moveDrone(drone: Drone, dt: number): void {
   }
 }
 
-// Update task progression - Smoothly tracks zone cells without destroying active flight paths
+// Update task progression - tracks exact visited cells across cooperative sweeps and
+// dynamically rebalances remaining failed-zone cells whenever any healthy drone becomes free
 export function updateTasks(
   drones: Record<string, Drone>,
   tasks: Task[],
   blocked: Set<string>
 ): void {
-  for (const task of tasks) {
-    if (task.status !== 'ACTIVE' || !task.assigned_drone) continue;
+  const taskCellSets = new Map<string, Set<string>>();
+  for (const t of tasks) {
+    const s = new Set<string>();
+    for (const c of t.cells) s.add(pointKey(c));
+    taskCellSets.set(t.task_id, s);
+  }
 
-    const drone = drones[task.assigned_drone];
-    if (!drone || !drone.healthy) continue;
+  const markVisitedIfOwned = (drone: Drone, cx: number, cy: number) => {
+    const pk = pointKey([cx, cy]);
+    const zIdx = Math.max(0, Math.min(4, Math.floor(cx / 6)));
+    const task = tasks.find((t) => getZoneIndexForTask(t.task_id) === zIdx);
+    if (!task || task.status === 'DONE') return;
+    if (!taskCellSets.get(task.task_id)?.has(pk)) return;
 
-    if (task.progress >= task.cells.length) {
-      task.status = 'DONE';
-      task.progress = task.cells.length;
-      drone.task_id = null;
-      drone.status = 'COMPLETED';
-      drone.path = [];
+    const homeDrone = drones[`D${zIdx + 1}`];
+    const allowed =
+      (homeDrone && homeDrone.drone_id === drone.drone_id) ||
+      !homeDrone ||
+      !homeDrone.healthy ||
+      ['FAILED', 'LOW_BATTERY', 'RETURNING'].includes(homeDrone.status) ||
+      task.assigned_drone === drone.drone_id;
+
+    if (allowed) {
+      getVisitedSet(task).add(pk);
+    }
+  };
+
+  let anyDroneFinishedSweep = false;
+
+  // 1. Advance active sweep cells for each healthy flying drone
+  for (const drone of Object.values(drones)) {
+    if (!drone.healthy || ['FAILED', 'LOW_BATTERY', 'RETURNING', 'PAUSED'].includes(drone.status)) {
       continue;
     }
 
-    // Advance task progress as drone physically covers each assigned cell
-    while (task.progress < task.cells.length) {
-      const targetCell = task.cells[task.progress];
-      const distToTarget = Math.hypot(
-        drone.x / CELL - (targetCell[0] + 0.5),
-        drone.y / CELL - (targetCell[1] + 0.5)
-      );
+    const dCellX = Math.max(0, Math.min(GRID_W - 1, Math.floor(drone.x / CELL)));
+    const dCellY = Math.max(0, Math.min(GRID_H - 1, Math.floor(drone.y / CELL)));
+    markVisitedIfOwned(drone, dCellX, dCellY);
 
-      if (distToTarget <= 0.85) {
-        task.progress += 1;
-      } else {
-        break;
+    if (drone.sweep_cells && drone.sweep_cells.length > 0) {
+      // Remove any leading waypoints that are already covered or within sensor proximity
+      while (drone.sweep_cells.length > 0) {
+        const [wx, wy] = drone.sweep_cells[0];
+        const wKey = pointKey([wx, wy]);
+        const zIdx = Math.max(0, Math.min(4, Math.floor(wx / 6)));
+        const ownerTask = tasks.find((t) => getZoneIndexForTask(t.task_id) === zIdx);
+        const alreadyVisited = ownerTask ? getVisitedSet(ownerTask).has(wKey) : false;
+
+        if (alreadyVisited) {
+          drone.sweep_cells.shift();
+          continue;
+        }
+
+        const distToTarget = Math.hypot(
+          drone.x / CELL - (wx + 0.5),
+          drone.y / CELL - (wy + 0.5)
+        );
+        if (distToTarget <= 0.55) {
+          markVisitedIfOwned(drone, wx, wy);
+          drone.sweep_cells.shift();
+        } else {
+          break;
+        }
       }
-    }
 
+      // Sync drone's primary task_id to the zone of its next waypoint
+      if (drone.sweep_cells.length > 0) {
+        const nextZoneIdx = Math.max(0, Math.min(4, Math.floor(drone.sweep_cells[0][0] / 6)));
+        drone.task_id = `Z${nextZoneIdx + 1}`;
+      } else {
+        drone.task_id = null;
+        drone.path = [];
+        anyDroneFinishedSweep = true;
+      }
+    } else if (drone.task_id) {
+      anyDroneFinishedSweep = true;
+    }
+  }
+
+  // 2. Sync all zone task progress & DONE state from real visited cells
+  for (const task of tasks) {
+    if (task.cells.length === 0) continue;
+    const visited = getVisitedSet(task);
+    task.progress = Math.min(task.cells.length, visited.size);
     if (task.progress >= task.cells.length) {
       task.status = 'DONE';
       task.progress = task.cells.length;
-      drone.task_id = null;
-      drone.status = 'COMPLETED';
-      drone.path = [];
+    }
+  }
+
+  // 3. If a drone just emptied its sweep_cells while any incomplete task still needs coverage,
+  //    immediately rebalance remaining uncovered cells across all healthy drones
+  const hasIncompleteTasks = tasks.some((t) => t.status !== 'DONE' && t.cells.length > 0);
+  if (anyDroneFinishedSweep && hasIncompleteTasks) {
+    rebalanceSwarmCoverage(tasks, drones);
+  }
+
+  // 4. Plan A* path when needed, or mark drone COMPLETED when no work remains
+  for (const drone of Object.values(drones)) {
+    if (!drone.healthy || ['FAILED', 'LOW_BATTERY', 'RETURNING', 'PAUSED'].includes(drone.status)) {
       continue;
     }
 
-    // Only plan path if current path is depleted, keeping existing waypoints unbroken
-    if (drone.path.length === 0) {
-      drone.path = buildPathForTask(drone, task, blocked);
+    if (drone.sweep_cells && drone.sweep_cells.length > 0) {
+      if (drone.path.length === 0) {
+        const activeTask =
+          tasks.find((t) => t.task_id === drone.task_id) ||
+          tasks.find((t) => t.status !== 'DONE') ||
+          tasks[0];
+        if (activeTask) {
+          drone.path = buildPathForTask(drone, activeTask, blocked);
+        }
+      }
+    } else {
+      drone.task_id = null;
+      drone.status = 'COMPLETED';
+      drone.path = [];
     }
   }
 }
@@ -1029,10 +1238,17 @@ export function detectTargetsWithSensorFusion(
       const targetCol = target.col !== undefined ? target.col : target.x;
       const targetRow = target.row !== undefined ? target.row : target.y;
       const targetZoneIdx = Math.max(0, Math.min(4, Math.floor(targetCol / 6)));
+      const targetZoneId = `Z${targetZoneIdx + 1}`;
       const expectedHomeDrone = drones[`D${targetZoneIdx + 1}`];
 
-      // Strict zone integrity: when the target's home drone is healthy, only that zone's drone discovers it
-      if (expectedHomeDrone && expectedHomeDrone.healthy && drone.drone_id !== expectedHomeDrone.drone_id) {
+      // Strict zone integrity: when the target's home drone is healthy and no compensating drone
+      // is assigned that zone, only the zone's home drone discovers it
+      if (
+        expectedHomeDrone &&
+        expectedHomeDrone.healthy &&
+        drone.drone_id !== expectedHomeDrone.drone_id &&
+        drone.task_id !== targetZoneId
+      ) {
         continue;
       }
 
