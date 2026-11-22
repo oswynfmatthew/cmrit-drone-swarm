@@ -11,10 +11,12 @@ import {
   RotateCcw,
   Sliders,
   Waves,
+  BrainCircuit,
 } from 'lucide-react';
 
 export type ViewMode =
   | 'gcs'
+  | 'swarm_ai'
   | 'overview'
   | 'simulation'
   | 'controls'
@@ -39,15 +41,21 @@ export const Header: React.FC<HeaderProps> = ({
   activeDronesCount,
   totalDronesCount,
 }) => {
+  const navTabClass = (isActive: boolean) =>
+    `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
+      isActive
+        ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-[0_0_16px_-2px_rgba(220,38,38,0.6)] border border-red-400/30'
+        : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/90 border border-transparent'
+    }`;
+
   return (
-    <header className="bg-[#121a29] border-b border-[#29374d] sticky top-0 z-40 px-4 lg:px-6 py-3 shadow-md">
+    <header className="bg-[#08080b]/95 backdrop-blur-md border-b border-red-900/35 sticky top-0 z-40 px-4 lg:px-6 py-3 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.9)]">
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-        {/* Brand / Logo */}
+        {/* Brand / Tactical Identity */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#0b1320] border border-cyan-500/40 flex items-center justify-center shadow-lg shadow-cyan-950/50 relative overflow-hidden group">
-            {/* High-tech tactical dark drone quadcopter silhouette */}
+          <div className="w-10 h-10 rounded-xl bg-[#0d0e14] border border-red-600/50 flex items-center justify-center shadow-[0_0_20px_-4px_rgba(220,38,38,0.5)] relative overflow-hidden group">
             <svg
-              className="w-6 h-6 text-cyan-400 group-hover:scale-110 transition-transform"
+              className="w-6 h-6 text-red-500 group-hover:scale-110 transition-transform"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -55,54 +63,46 @@ export const Header: React.FC<HeaderProps> = ({
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              {/* Central fuselage */}
-              <circle cx="12" cy="12" r="3" fill="#0284c7" fillOpacity="0.4" />
-              {/* Cross arms */}
+              <circle cx="12" cy="12" r="3" fill="#dc2626" fillOpacity="0.45" />
               <line x1="5" y1="5" x2="9.8" y2="9.8" />
               <line x1="19" y1="5" x2="14.2" y2="9.8" />
               <line x1="5" y1="19" x2="9.8" y2="14.2" />
               <line x1="19" y1="19" x2="14.2" y2="14.2" />
-              {/* 4 Rotors */}
               <ellipse cx="4.5" cy="4.5" rx="3.5" ry="1.5" />
               <ellipse cx="19.5" cy="4.5" rx="3.5" ry="1.5" />
               <ellipse cx="4.5" cy="19.5" rx="3.5" ry="1.5" />
               <ellipse cx="19.5" cy="19.5" rx="3.5" ry="1.5" />
-              {/* Forward camera gimbal */}
-              <circle cx="12" cy="7.5" r="1" fill="#38bdf8" />
+              <circle cx="12" cy="7.5" r="1" fill="#ef4444" />
             </svg>
-            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              Autonomous Recon Swarm GCS
+            <h1 className="text-lg font-extrabold tracking-tight text-white flex items-center gap-2">
+              <span>Autonomous Recon Swarm GCS</span>
             </h1>
-            <p className="text-xs text-slate-400">
-              Multi-Modal Sensor Fusion • YOLO Edge CNN • Dynamic Window Approach • Mesh Relays
+            <p className="text-xs text-zinc-400">
+              Multi-Modal Sensor Fusion · Edge YOLO CNN · DWA Collision Avoidance · Mesh Relays
             </p>
           </div>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center bg-[#182235] p-1 rounded-lg border border-[#29374d] flex-wrap gap-1">
-          <button
-            onClick={() => setViewMode('gcs')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'gcs'
-                ? 'bg-sky-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
+        {/* View Switcher Navigation */}
+        <div className="flex items-center bg-[#0f1016] p-1 rounded-xl border border-zinc-800/90 flex-wrap gap-1 shadow-inner">
+          <button onClick={() => setViewMode('gcs')} className={navTabClass(viewMode === 'gcs')}>
             <Split className="w-3.5 h-3.5" />
             <span>GCS View</span>
           </button>
 
           <button
+            onClick={() => setViewMode('swarm_ai')}
+            className={navTabClass(viewMode === 'swarm_ai')}
+          >
+            <BrainCircuit className="w-3.5 h-3.5" />
+            <span>Swarm AI</span>
+          </button>
+
+          <button
             onClick={() => setViewMode('overview')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'overview'
-                ? 'bg-sky-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={navTabClass(viewMode === 'overview')}
           >
             <Activity className="w-3.5 h-3.5" />
             <span>Mission Overview</span>
@@ -110,11 +110,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setViewMode('simulation')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'simulation'
-                ? 'bg-sky-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={navTabClass(viewMode === 'simulation')}
           >
             <Monitor className="w-3.5 h-3.5" />
             <span>Simulation Grid</span>
@@ -122,11 +118,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setViewMode('controls')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'controls'
-                ? 'bg-sky-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={navTabClass(viewMode === 'controls')}
           >
             <Sliders className="w-3.5 h-3.5" />
             <span>Drone Controls</span>
@@ -134,11 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setViewMode('edge_slam')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'edge_slam'
-                ? 'bg-sky-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={navTabClass(viewMode === 'edge_slam')}
           >
             <Cpu className="w-3.5 h-3.5" />
             <span>Edge AI & SLAM</span>
@@ -146,11 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setViewMode('swarm_mesh')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'swarm_mesh'
-                ? 'bg-sky-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={navTabClass(viewMode === 'swarm_mesh')}
           >
             <Share2 className="w-3.5 h-3.5" />
             <span>Swarm Mesh & DWA</span>
@@ -158,30 +142,26 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setViewMode('hydro')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
-              viewMode === 'hydro'
-                ? 'bg-cyan-500 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={navTabClass(viewMode === 'hydro')}
           >
             <Waves className="w-3.5 h-3.5" />
             <span>Hydro & Bathymetry</span>
           </button>
         </div>
 
-        {/* Quick Swarm Actions & Fleet Count */}
+        {/* Fleet Status & Quick Launch Controls */}
         <div className="flex items-center gap-2.5">
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-[#182235] border border-[#29374d] rounded-lg text-xs font-mono text-slate-300">
-            <span className="text-slate-500">Fleet:</span>
-            <span className="text-emerald-400 font-bold">{activeDronesCount}</span>
-            <span className="text-slate-500">/</span>
-            <span>{totalDronesCount}</span>
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-[#0f1016] border border-zinc-800 rounded-lg text-xs font-mono tabular-nums text-zinc-300">
+            <span className="text-zinc-500">Fleet:</span>
+            <span className="text-red-400 font-bold">{activeDronesCount}</span>
+            <span className="text-zinc-600">/</span>
+            <span className="text-white font-semibold">{totalDronesCount}</span>
           </div>
 
           {missionStatus !== 'ACTIVE' ? (
             <button
               onClick={() => onSendCommand('START')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow transition active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold rounded-lg shadow-[0_0_18px_-4px_rgba(220,38,38,0.7)] transition active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Launch</span>
@@ -189,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
           ) : (
             <button
               onClick={() => onSendCommand('PAUSE')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold rounded-lg shadow transition active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow transition active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Pause className="w-3.5 h-3.5 fill-current" />
               <span>Pause</span>
@@ -198,7 +178,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => onSendCommand('RESET')}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#222c3e] hover:bg-[#2b394e] border border-[#374966] text-slate-300 text-xs rounded-lg transition"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#14151c] hover:bg-[#1e202a] border border-zinc-800 hover:border-red-600/50 text-zinc-300 hover:text-white text-xs rounded-lg transition cursor-pointer"
             title="Reset Simulation"
           >
             <RotateCcw className="w-3.5 h-3.5" />

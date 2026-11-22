@@ -225,3 +225,57 @@ export interface SwarmSimulationConfig {
   movingObstaclesEnabled: boolean;
   gpsAvailable: boolean; // false in tunnels/caves
 }
+
+export type ReasoningLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export interface PostScanAiAnalysis {
+  executiveSummary: string;
+  severityRating: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
+  operationalVerdict: string;
+  keyFindings: string[];
+  zoneAssessments: Array<{
+    zoneId: string;
+    droneId: string;
+    coveragePercent: number;
+    targetsDetected: number;
+    statusNote: string;
+    riskLevel: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'CLEAR';
+  }>;
+  prioritizedExtractions: Array<{
+    rank: number;
+    targetId: string;
+    targetType: string;
+    coordinates: string;
+    rationale: string;
+    recommendedAsset: string;
+  }>;
+  dispatchRecommendations: string[];
+  swarmPerformanceAudit: {
+    resilienceNote: string;
+    batteryAndRangeNote: string;
+    sensorFusionNote: string;
+  };
+  generatedAt: string;
+  model: string;
+}
+
+export interface SwarmAiMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  reasoningLevel?: ReasoningLevel;
+  includedVisualFrame?: boolean;
+  uploadedImages?: string[];
+  error?: string;
+}
+
+export interface SwarmAiConversation {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: SwarmAiMessage[];
+}
+
+

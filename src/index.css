@@ -2,32 +2,42 @@
 
 @layer base {
   body {
-    background-color: #0e1624;
-    color: #e2e8f0;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #050507;
+    background-image:
+      radial-gradient(ellipse 80% 45% at 50% -10%, rgba(220, 38, 38, 0.14), transparent 70%),
+      radial-gradient(circle at 88% 18%, rgba(185, 28, 28, 0.06), transparent 45%);
+    background-attachment: fixed;
+    color: #f4f4f5;
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 }
 
-/* Custom scrollbars for telemetry feeds */
+/* Precision matte black & crimson scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0e1624;
+  background: #07070a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #28364e;
+  background: #27272f;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3b4e70;
+  background: #dc2626;
 }
 
-/* Canvas styling */
+/* Canvas rendering crispness */
 canvas {
   image-rendering: pixelated;
 }

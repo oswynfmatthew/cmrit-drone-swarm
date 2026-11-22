@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Drone, EnvironmentType, MissionStatus, MovingObstacle, Target, Task, TargetType, TargetPriority } from './types';
+import {
+  Drone,
+  EnvironmentType,
+  MissionStatus,
+  MovingObstacle,
+  PostScanAiAnalysis,
+  ReasoningLevel,
+  SwarmAiConversation,
+  SwarmAiMessage,
+  Target,
+  Task,
+  TargetType,
+  TargetPriority,
+} from './types';
 import {
   CELL,
   GRID_H,
@@ -31,9 +44,12 @@ import { EdgeAISlamView } from './components/EdgeAISlamView';
 import { SwarmMeshDwaView } from './components/SwarmMeshDwaView';
 import { DroneControlsView } from './components/DroneControlsView';
 import { HydroBathymetricSuiteView } from './components/HydroBathymetricSuiteView';
+import { PostScanAnalysisPanel } from './components/PostScanAnalysisPanel';
+import { SwarmAiView } from './components/SwarmAiView';
 import { TelemetryDrawer } from './components/TelemetryDrawer';
 import { ImageUploadModal } from './components/ImageUploadModal';
 import { CALAMITY_SCENARIOS, calculateGeoCoordinates } from './satelliteAnalysis';
+import { buildTelemetrySnapshot, encodeImageUrlToJpegDataUrl } from './utils/telemetrySnapshot';
 import { CheckCircle2, MapPin, Crosshair, ShieldAlert, Trash2 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -77,6 +93,72 @@ export const App: React.FC = () => {
   const [lastCommand, setLastCommand] = useState<string>('');
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1);
   const [selectedDroneId, setSelectedDroneId] = useState<string | null>(null);
+
+  // Post-Scan AI Analysis State (visible only after scan COMPLETE + targets found)
+  const [postScanAnalysis, setPostScanAnalysis] = useState<PostScanAiAnalysis | null>(null);
+  const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState<boolean>(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Swarm AI ChatGPT-style Thread & Persisted History State
+  const [swarmConversations, setSwarmConversations] = useState<SwarmAiConversation[]>(() => {
+    try {
+      const saved = localStorage.getItem('swarm_ai_conversations_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore storage read failure
+    }
+    const nowIso = new Date().toISOString();
+    return [{ id: `conv-${Date.now()}`, title: 'New Conversation', createdAt: nowIso, updatedAt: nowIso, messages: [] }];
+  });
+  const [activeConversationId, setActiveConversationId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('swarm_ai_conversations_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0].id;
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  });
+  const [isSwarmAiStreaming, setIsSwarmAiStreaming] = useState<boolean>(false);
+  const [swarmAiReasoningLevel, setSwarmAiReasoningLevel] = useState<ReasoningLevel>('HIGH');
+  const [swarmAiIncludeVisualFrame, setSwarmAiIncludeVisualFrame] = useState<boolean>(true);
+  const [swarmAiDraftPrompt, setSwarmAiDraftPrompt] = useState<string>('');
+
+  const resolvedConversationId =
+    activeConversationId && swarmConversations.some((c) => c.id === activeConversationId)
+      ? activeConversationId
+      : swarmConversations[0]?.id || '';
+
+  const activeConversation =
+    swarmConversations.find((c) => c.id === resolvedConversationId) || swarmConversations[0];
+  const swarmAiMessages = activeConversation?.messages || [];
+
+  useEffect(() => {
+    if (!activeConversationId && swarmConversations[0]?.id) {
+      setActiveConversationId(swarmConversations[0].id);
+    }
+  }, [activeConversationId, swarmConversations]);
+
+  useEffect(() => {
+    try {
+      const sanitized = swarmConversations
+        .filter((c) => c.messages.length > 0)
+        .slice(0, 30)
+        .map((c) => ({
+          ...c,
+          messages: c.messages.map(({ uploadedImages: _img, ...rest }) => rest),
+        }));
+      localStorage.setItem('swarm_ai_conversations_v1', JSON.stringify(sanitized));
+    } catch {
+      // ignore storage write failure
+    }
+  }, [swarmConversations]);
 
   // References for requestAnimationFrame loop
   const dronesRef = useRef(drones);
@@ -143,6 +225,8 @@ export const App: React.FC = () => {
       setMissionStatus('READY');
       setMissionTime(0);
       setSelectedDroneId(null);
+      setPostScanAnalysis(null);
+      setAnalysisError(null);
 
       // Map the newly analyzed image targets cleanly (or empty if none detected)
       const targetMap: Record<string, Target> = {};
@@ -170,6 +254,8 @@ export const App: React.FC = () => {
     blockedRef.current = newBlocked;
     const newTasks = makeZoneTasks(GRID_W, GRID_H, 5, newBlocked);
     setTasks(newTasks);
+    setPostScanAnalysis(null);
+    setAnalysisError(null);
     logEvent('SATELLITE_IMAGE_CLEARED_RESET_TO_CAVERN');
   }, [logEvent]);
 
@@ -242,6 +328,8 @@ export const App: React.FC = () => {
     setEvents(['MISSION_RESET']);
     setLastCommand('RESET');
     setSelectedDroneId(null);
+    setPostScanAnalysis(null);
+    setAnalysisError(null);
   }, [environment, backgroundImageUrl]);
 
   // Command Handler (START, PAUSE, RESUME, FAIL_D2, ADD_TARGET, RESET)
@@ -723,10 +811,292 @@ export const App: React.FC = () => {
   const targetsTotalCount = Object.values(targets).length;
   const activeDronesCount = Object.values(drones).filter((d) => d.healthy).length;
 
+  const isPostScanAiEligible = missionStatus === 'COMPLETE' && targetsFoundCount > 0;
+
+  const handleGeneratePostScanAnalysis = useCallback(async () => {
+    if (isGeneratingAnalysis) return;
+    setIsGeneratingAnalysis(true);
+    setAnalysisError(null);
+
+    try {
+      const telemetrySnapshot = buildTelemetrySnapshot({
+        missionStatus: missionStatusRef.current,
+        missionTime: missionTimeRef.current,
+        areaCovered,
+        environment,
+        darknessLevel: darknessLevelRef.current,
+        backgroundImageName,
+        drones: dronesRef.current,
+        tasks: tasksRef.current,
+        targets: targetsRef.current,
+        events,
+      });
+
+      const imageDataUrl = await encodeImageUrlToJpegDataUrl(backgroundImageUrl, 1024);
+
+      const response = await fetch('/api/gemini/mission-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageDataUrl, telemetrySnapshot }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || `Request failed with HTTP ${response.status}`);
+      }
+
+      setPostScanAnalysis(data as PostScanAiAnalysis);
+      logEvent('GEMINI_POST_SCAN_AI_ANALYSIS_GENERATED');
+    } catch (err: any) {
+      setAnalysisError(err?.message || 'Failed to generate AI analysis.');
+    } finally {
+      setIsGeneratingAnalysis(false);
+    }
+  }, [
+    isGeneratingAnalysis,
+    areaCovered,
+    environment,
+    backgroundImageName,
+    events,
+    backgroundImageUrl,
+    logEvent,
+  ]);
+
+  const updateConversationMessages = useCallback(
+    (convId: string, updater: (prevMsgs: SwarmAiMessage[]) => SwarmAiMessage[]) => {
+      setSwarmConversations((prevConvs) =>
+        prevConvs.map((conv) => {
+          if (conv.id !== convId) return conv;
+          const nextMsgs = updater(conv.messages);
+          const firstUser = nextMsgs.find((m) => m.role === 'user');
+          const derivedTitle = firstUser
+            ? firstUser.content.slice(0, 64) + (firstUser.content.length > 64 ? '...' : '')
+            : conv.title;
+          return {
+            ...conv,
+            title: derivedTitle,
+            updatedAt: new Date().toISOString(),
+            messages: nextMsgs,
+          };
+        })
+      );
+    },
+    []
+  );
+
+  const handleSendSwarmAiMessage = useCallback(
+    async (promptText: string, attachedImages: string[] = []) => {
+      const cleanPrompt = promptText.trim();
+      if ((!cleanPrompt && attachedImages.length === 0) || isSwarmAiStreaming) return;
+
+      const convId = resolvedConversationId;
+      const userMsg: SwarmAiMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: cleanPrompt || 'Analyze the uploaded image(s).',
+        timestamp: new Date().toISOString(),
+        reasoningLevel: swarmAiReasoningLevel,
+        includedVisualFrame: Boolean(backgroundImageUrl && swarmAiIncludeVisualFrame),
+        uploadedImages: attachedImages.length > 0 ? attachedImages : undefined,
+      };
+
+      const assistantId = `a-${Date.now() + 1}`;
+      const assistantPlaceholder: SwarmAiMessage = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toISOString(),
+        reasoningLevel: swarmAiReasoningLevel,
+        includedVisualFrame: Boolean(backgroundImageUrl && swarmAiIncludeVisualFrame),
+      };
+
+      const priorHistory = swarmAiMessages
+        .filter((m) => !m.error && m.content.trim().length > 0)
+        .map((m) => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          text: m.content,
+        }));
+
+      updateConversationMessages(convId, (prev) => [...prev, userMsg, assistantPlaceholder]);
+      setIsSwarmAiStreaming(true);
+
+      try {
+        const telemetrySnapshot = buildTelemetrySnapshot({
+          missionStatus: missionStatusRef.current,
+          missionTime: missionTimeRef.current,
+          areaCovered,
+          environment,
+          darknessLevel: darknessLevelRef.current,
+          backgroundImageName,
+          drones: dronesRef.current,
+          tasks: tasksRef.current,
+          targets: targetsRef.current,
+          events,
+        });
+
+        const imageDataUrl =
+          backgroundImageUrl && swarmAiIncludeVisualFrame
+            ? await encodeImageUrlToJpegDataUrl(backgroundImageUrl, 1024)
+            : null;
+
+        const response = await fetch('/api/gemini/swarm-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: userMsg.content,
+            history: priorHistory,
+            telemetrySnapshot,
+            imageDataUrl,
+            attachedImages,
+            reasoningLevel: swarmAiReasoningLevel,
+          }),
+        });
+
+        if (!response.ok) {
+          let errMsg = `Request failed with HTTP ${response.status}`;
+          try {
+            const errJson = await response.json();
+            if (errJson?.error) errMsg = errJson.error;
+          } catch {
+            // ignore non-json body
+          }
+          throw new Error(errMsg);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Streaming response body unavailable.');
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accumulated = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const eventsSplit = buffer.split('\n\n');
+          buffer = eventsSplit.pop() || '';
+
+          for (const rawEvent of eventsSplit) {
+            const dataLine = rawEvent
+              .split('\n')
+              .find((l) => l.startsWith('data: '));
+            if (!dataLine) continue;
+            const payloadStr = dataLine.slice(6).trim();
+            if (!payloadStr) continue;
+            const parsed = JSON.parse(payloadStr);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            if (parsed.text) {
+              accumulated += parsed.text;
+              updateConversationMessages(convId, (prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, content: accumulated } : m))
+              );
+            }
+          }
+        }
+      } catch (err: any) {
+        const message = err?.message || 'Swarm AI request failed.';
+        updateConversationMessages(convId, (prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, error: message } : m))
+        );
+      } finally {
+        setIsSwarmAiStreaming(false);
+      }
+    },
+    [
+      isSwarmAiStreaming,
+      resolvedConversationId,
+      swarmAiReasoningLevel,
+      swarmAiIncludeVisualFrame,
+      swarmAiMessages,
+      backgroundImageUrl,
+      backgroundImageName,
+      areaCovered,
+      environment,
+      events,
+      updateConversationMessages,
+    ]
+  );
+
+  const handleNewSwarmAiChat = useCallback(() => {
+    if (isSwarmAiStreaming) return;
+    const emptyExisting = swarmConversations.find((c) => c.messages.length === 0);
+    if (emptyExisting) {
+      setActiveConversationId(emptyExisting.id);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const newConv: SwarmAiConversation = {
+      id: `conv-${Date.now()}`,
+      title: 'New Conversation',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messages: [],
+    };
+    setSwarmConversations((prev) => [newConv, ...prev]);
+    setActiveConversationId(newConv.id);
+  }, [isSwarmAiStreaming, swarmConversations]);
+
+  const handleSelectSwarmAiConversation = useCallback((convId: string) => {
+    setActiveConversationId(convId);
+  }, []);
+
+  const handleDeleteSwarmAiConversation = useCallback(
+    (convId: string) => {
+      if (isSwarmAiStreaming) return;
+      setSwarmConversations((prev) => {
+        const remaining = prev.filter((c) => c.id !== convId);
+        if (remaining.length === 0) {
+          const nowIso = new Date().toISOString();
+          const fresh: SwarmAiConversation = {
+            id: `conv-${Date.now()}`,
+            title: 'New Conversation',
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            messages: [],
+          };
+          setActiveConversationId(fresh.id);
+          return [fresh];
+        }
+        if (convId === resolvedConversationId) {
+          setActiveConversationId(remaining[0].id);
+        }
+        return remaining;
+      });
+    },
+    [isSwarmAiStreaming, resolvedConversationId]
+  );
+
+  const handleClearSwarmAiHistory = useCallback(() => {
+    if (isSwarmAiStreaming) return;
+    const nowIso = new Date().toISOString();
+    const fresh: SwarmAiConversation = {
+      id: `conv-${Date.now()}`,
+      title: 'New Conversation',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messages: [],
+    };
+    setSwarmConversations([fresh]);
+    setActiveConversationId(fresh.id);
+  }, [isSwarmAiStreaming]);
+
+  const handleOpenSwarmAi = useCallback((seedPrompt?: string) => {
+    setViewMode('swarm_ai');
+    if (seedPrompt) {
+      setSwarmAiDraftPrompt(seedPrompt);
+    }
+  }, []);
+
   const selectedDrone = selectedDroneId ? drones[selectedDroneId] || null : null;
 
   return (
-    <div className="min-h-screen bg-[#0e1624] text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#050507] text-zinc-100 flex flex-col font-sans">
       {/* Top Header Navigation */}
       <Header
         viewMode={viewMode}
@@ -745,11 +1115,11 @@ export const App: React.FC = () => {
               {/* Tactical Canvas (7 cols) */}
               <div className="xl:col-span-7 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    GCS Tactical Recon Grid {backgroundImageName && `• [${backgroundImageName}]`}
+                  <h2 className="text-sm font-bold text-zinc-100 flex items-center gap-2 tracking-tight">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-600 shadow-sm shadow-red-500"></span>
+                    <span>GCS Tactical Recon Grid {backgroundImageName && `• [${backgroundImageName}]`}</span>
                   </h2>
-                  <span className="text-xs text-slate-400 font-mono">
+                  <span className="text-xs text-zinc-400 font-mono">
                     [S]tart • [P]ause • [R]eset • [F]ail D2 • [T]arget
                   </span>
                 </div>
@@ -773,6 +1143,19 @@ export const App: React.FC = () => {
                   onOpenUploadModal={() => setIsUploadModalOpen(true)}
                   onClearBackgroundImage={handleClearBackgroundImage}
                 />
+
+                {/* Post-Scan "Get AI Analysis" Box — Strictly visible ONLY after scan is 100% COMPLETE and targets are found */}
+                <PostScanAnalysisPanel
+                  visible={isPostScanAiEligible}
+                  sceneName={backgroundImageName}
+                  targetsFoundCount={targetsFoundCount}
+                  missionTime={missionTime}
+                  analysis={postScanAnalysis}
+                  isLoading={isGeneratingAnalysis}
+                  error={analysisError}
+                  onGenerateAnalysis={handleGeneratePostScanAnalysis}
+                  onOpenSwarmAi={handleOpenSwarmAi}
+                />
               </div>
 
               {/* GCS Controls & Fleet Health Sidebar (5 cols) */}
@@ -795,7 +1178,30 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 2: Mission Overview (Dedicated Tab) */}
+        {/* TAB 2: Swarm AI (Dedicated ChatGPT-style Assistant with History) */}
+        {viewMode === 'swarm_ai' && (
+          <SwarmAiView
+            backgroundImageUrl={backgroundImageUrl}
+            backgroundImageName={backgroundImageName}
+            conversations={swarmConversations}
+            activeConversationId={resolvedConversationId}
+            messages={swarmAiMessages}
+            isStreaming={isSwarmAiStreaming}
+            reasoningLevel={swarmAiReasoningLevel}
+            setReasoningLevel={setSwarmAiReasoningLevel}
+            includeVisualFrame={swarmAiIncludeVisualFrame}
+            setIncludeVisualFrame={setSwarmAiIncludeVisualFrame}
+            draftPrompt={swarmAiDraftPrompt}
+            setDraftPrompt={setSwarmAiDraftPrompt}
+            onSendMessage={handleSendSwarmAiMessage}
+            onNewChat={handleNewSwarmAiChat}
+            onSelectConversation={handleSelectSwarmAiConversation}
+            onDeleteConversation={handleDeleteSwarmAiConversation}
+            onClearAllHistory={handleClearSwarmAiHistory}
+          />
+        )}
+
+        {/* TAB 3: Mission Overview (Dedicated Tab) */}
         {viewMode === 'overview' && (
           <MissionOverviewView
             missionStatus={missionStatus}
@@ -822,17 +1228,17 @@ export const App: React.FC = () => {
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   Full Tactical Simulation Grid
                   {backgroundImageName && (
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-red-600/20 text-red-400 border border-red-500/40">
                       {backgroundImageName}
                     </span>
                   )}
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-zinc-400">
                   Autonomous drone swarm survey with 360° LiDAR, real-time target detection, and direct image circling.
                 </p>
               </div>
 
-              <div className="text-xs font-mono text-slate-400 bg-[#182235] px-3 py-1.5 rounded-lg border border-[#29374d]">
+              <div className="text-xs font-mono text-zinc-400 bg-[#0b0c10] px-3 py-1.5 rounded-lg border border-zinc-800">
                 Hotkeys: [S]tart • [P]ause • [R]eset • [F]ail D2 • [T]arget
               </div>
             </div>
@@ -857,15 +1263,28 @@ export const App: React.FC = () => {
               onClearBackgroundImage={handleClearBackgroundImage}
             />
 
+            {/* Post-Scan "Get AI Analysis" Box — Strictly visible ONLY after scan is 100% COMPLETE and targets are found */}
+            <PostScanAnalysisPanel
+              visible={isPostScanAiEligible}
+              sceneName={backgroundImageName}
+              targetsFoundCount={targetsFoundCount}
+              missionTime={missionTime}
+              analysis={postScanAnalysis}
+              isLoading={isGeneratingAnalysis}
+              error={analysisError}
+              onGenerateAnalysis={handleGeneratePostScanAnalysis}
+              onOpenSwarmAi={handleOpenSwarmAi}
+            />
+
             {/* Autonomous Recon Drone Survey & Target Pinpoint Registry */}
             <div className="pt-2">
               <div className="flex flex-wrap items-center justify-between pb-2 px-1 gap-2">
-                <div className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                  <Crosshair className="w-4 h-4 text-sky-400" />
+                <div className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                  <Crosshair className="w-4 h-4 text-red-500" />
                   <span>Swarm Zone Reconnaissance & Target Detection Record</span>
                 </div>
-                <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2 flex-wrap">
-                  <span className="text-slate-500 font-semibold">Target Key:</span>
+                <div className="text-[11px] font-mono text-zinc-400 flex items-center gap-2 flex-wrap">
+                  <span className="text-zinc-500 font-semibold">Target Key:</span>
                   <span className="text-sky-400 font-bold px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/30">
                     Human [Blue]
                   </span>
@@ -918,39 +1337,39 @@ export const App: React.FC = () => {
                       onClick={() => setSelectedDroneId(d.drone_id)}
                       className={`border rounded-xl p-3 cursor-pointer transition flex flex-col justify-between ${
                         isDroneFailed
-                          ? 'border-rose-500 bg-rose-950/60 ring-2 ring-rose-500/60 shadow-rose-950/50 shadow-lg text-rose-200'
+                          ? 'border-red-600 bg-red-950/50 ring-2 ring-red-500/50 shadow-red-950/50 shadow-lg text-red-200'
                           : selectedDroneId === d.drone_id
-                          ? 'border-sky-400 ring-2 ring-sky-400/30 bg-[#1b263b]'
-                          : 'border-[#29374d] hover:border-slate-500 bg-[#182235]'
+                          ? 'border-red-500 ring-2 ring-red-500/30 bg-[#170c10]'
+                          : 'border-zinc-800 hover:border-red-500/50 bg-[#0b0c10]'
                       }`}
                     >
                       {/* Top Header */}
                       <div>
-                        <div className="flex items-center justify-between pb-2 border-b border-[#253347]">
+                        <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-sm text-white font-mono flex items-center gap-1.5">
                               <span>{d.drone_id}</span>
                               <span
                                 className={`w-2.5 h-2.5 rounded-full ${
                                   isDroneFailed
-                                    ? 'bg-rose-500 ring-2 ring-rose-500/30 animate-ping'
+                                    ? 'bg-red-500 ring-2 ring-red-500/30 animate-ping'
                                     : isTaskDone
                                     ? 'bg-emerald-400 ring-2 ring-emerald-400/30'
                                     : d.status === 'SEARCHING'
-                                    ? 'bg-sky-400 ring-2 ring-sky-400/30 animate-pulse'
+                                    ? 'bg-red-500 ring-2 ring-red-500/30 animate-pulse'
                                     : 'bg-amber-400 ring-2 ring-amber-400/30'
                                 }`}
                               />
                             </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0e1624] text-slate-400 border border-[#29374d]">
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#06070a] text-zinc-400 border border-zinc-800">
                               Zone Z{dIdx + 1}
                             </span>
                           </div>
 
                           <div className="text-right">
                             {isDroneFailed ? (
-                              <span className="text-[11px] font-mono text-rose-400 font-bold flex items-center gap-0.5 animate-pulse">
-                                <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                              <span className="text-[11px] font-mono text-red-400 font-bold flex items-center gap-0.5 animate-pulse">
+                                <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
                                 FAILED
                               </span>
                             ) : isTaskDone ? (
@@ -959,7 +1378,7 @@ export const App: React.FC = () => {
                                 100% DONE
                               </span>
                             ) : (
-                              <span className="text-[11px] font-mono text-sky-400 font-semibold">
+                              <span className="text-[11px] font-mono text-red-400 font-semibold">
                                 {zoneProgress}% SCAN
                               </span>
                             )}
@@ -967,34 +1386,34 @@ export const App: React.FC = () => {
                         </div>
 
                         {/* Telemetry metadata */}
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1.5 pb-2">
+                        <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 pt-1.5 pb-2">
                           <span>⚡ {d.battery.toFixed(0)}% Bat</span>
                           <span>Cols {dIdx * 6}–{dIdx * 6 + 5}</span>
-                          <span className={d.healthy ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-bold'}>
+                          <span className={d.healthy ? 'text-emerald-400 font-semibold' : 'text-red-400 font-bold'}>
                             {d.healthy ? 'READY' : 'FAULT'}
                           </span>
                         </div>
 
                         {/* Target Detection Record */}
                         <div className="space-y-1.5 pt-1">
-                          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold font-mono flex items-center justify-between">
+                          <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold font-mono flex items-center justify-between">
                             <span>Pinpointed Targets:</span>
-                            <span className={isDroneFailed ? 'text-rose-400' : 'text-white'}>
+                            <span className={isDroneFailed ? 'text-red-400' : 'text-white'}>
                               {isDroneFailed ? 'N/A' : droneTargets.length}
                             </span>
                           </div>
 
                           {isDroneFailed ? (
-                            <div className="bg-rose-950/70 border border-rose-500/60 rounded-lg p-2.5 text-center text-[10px] font-mono text-rose-300">
-                              <span className="font-bold block text-rose-200">DRONE FAILED</span>
-                              <span className="text-[9px] text-rose-400">Data link severed • No telemetry stored</span>
+                            <div className="bg-red-950/70 border border-red-500/60 rounded-lg p-2.5 text-center text-[10px] font-mono text-red-300">
+                              <span className="font-bold block text-red-200">DRONE FAILED</span>
+                              <span className="text-[9px] text-red-400">Data link severed • Tasks reassigned</span>
                             </div>
                           ) : droneTargets.length === 0 ? (
-                            <div className="bg-[#0e1624] border border-[#29374d] rounded-lg p-2 text-center text-[10px] font-mono text-slate-400">
+                            <div className="bg-[#06070a] border border-zinc-800 rounded-lg p-2 text-center text-[10px] font-mono text-zinc-400">
                               {isTaskDone ? (
-                                <span className="text-slate-400">✓ Sector Clear (0 Targets)</span>
+                                <span className="text-zinc-400">✓ Sector Clear (0 Targets)</span>
                               ) : (
-                                <span className="text-sky-400/80">Scanning designated sector...</span>
+                                <span className="text-red-400/90">Scanning designated sector...</span>
                               )}
                             </div>
                           ) : (
@@ -1035,7 +1454,7 @@ export const App: React.FC = () => {
                               return (
                                 <div
                                   key={target.target_id}
-                                  className="bg-[#0e1624] border border-[#2a384e] rounded-lg p-2 text-xs space-y-1 hover:border-sky-500/50 transition"
+                                  className="bg-[#06070a] border border-zinc-800 rounded-lg p-2 text-xs space-y-1 hover:border-red-500/50 transition"
                                 >
                                   <div className="flex items-center justify-between gap-1">
                                     <span
@@ -1044,7 +1463,7 @@ export const App: React.FC = () => {
                                       {typeBadge.label} [{probPercent}%]
                                     </span>
                                     <div className="flex items-center gap-1.5">
-                                      <span className="text-[10px] font-mono text-slate-400">
+                                      <span className="text-[10px] font-mono text-zinc-400">
                                         {target.target_id}
                                       </span>
                                       <button
@@ -1052,7 +1471,7 @@ export const App: React.FC = () => {
                                           e.stopPropagation();
                                           handleDeleteTarget(target.target_id);
                                         }}
-                                        className="p-0.5 text-slate-500 hover:text-rose-400 transition"
+                                        className="p-0.5 text-zinc-500 hover:text-red-400 transition"
                                         title="Delete Target"
                                       >
                                         <Trash2 className="w-3 h-3" />
@@ -1060,23 +1479,23 @@ export const App: React.FC = () => {
                                     </div>
                                   </div>
 
-                                  <div className="text-[11px] text-slate-200 font-semibold line-clamp-1">
+                                  <div className="text-[11px] text-zinc-200 font-semibold line-clamp-1">
                                     {target.label || target.type}
                                   </div>
 
-                                  <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-sky-400 flex-shrink-0" />
-                                    <span className="truncate text-slate-300 font-mono">
+                                  <div className="text-[10px] font-mono text-zinc-400 flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-red-400 flex-shrink-0" />
+                                    <span className="truncate text-zinc-300 font-mono">
                                       {geoCoord}
                                     </span>
                                   </div>
 
-                                  <div className="text-[9px] font-mono text-slate-500">
+                                  <div className="text-[9px] font-mono text-zinc-500">
                                     Grid: [X: {target.x}, Y: {target.y}] • Priority:{' '}
                                     <strong
                                       className={
                                         target.priority === 'HIGH'
-                                          ? 'text-rose-400'
+                                          ? 'text-red-400'
                                           : 'text-amber-400'
                                       }
                                     >

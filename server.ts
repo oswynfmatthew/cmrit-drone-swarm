@@ -568,6 +568,311 @@ Systematic street-by-street & yard-by-yard sweep (scan from top edge y=0 down to
   }
 });
 
+function parseSafeBase64Image(
+  imageDataUrl: unknown
+): { inlineData: { mimeType: string; data: string } } | null {
+  if (typeof imageDataUrl !== 'string') return null;
+  const trimmed = imageDataUrl.trim();
+  const match = trimmed.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
+  if (!match) return null;
+  const mimeType = match[1] === 'image/jpg' ? 'image/jpeg' : match[1];
+  const data = match[2].replace(/[\r\n]/g, '');
+  if (data.length > 20 * 1024 * 1024) return null;
+  return { inlineData: { mimeType, data } };
+}
+
+function classifyGeminiError(error: any): { status: number; message: string } {
+  const rawMsg = String(error?.message || error || 'Gemini API request failed');
+  if (
+    rawMsg.includes('API_KEY_INVALID') ||
+    rawMsg.includes('API key not valid') ||
+    rawMsg.includes('PERMISSION_DENIED') ||
+    rawMsg.includes('403')
+  ) {
+    return {
+      status: 403,
+      message:
+        'Gemini API authorization failed. Please verify your GEMINI_API_KEY in Settings > Secrets.',
+    };
+  }
+  if (rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('429')) {
+    return {
+      status: 429,
+      message:
+        'Gemini API quota limit reached (429). Retry shortly or check quota/billing in Settings > Secrets.',
+    };
+  }
+  if (rawMsg.includes('NOT_FOUND') || rawMsg.includes('404')) {
+    return {
+      status: 404,
+      message: 'Requested Gemini model endpoint was not found. Please try again.',
+    };
+  }
+  return { status: 500, message: rawMsg };
+}
+
+// Post-Scan Structured AI Mission Analysis Endpoint
+app.post('/api/gemini/mission-analysis', async (req, res) => {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({
+        error: 'GEMINI_API_KEY is not configured on the server. Please check Settings > Secrets.',
+      });
+    }
+
+    const { imageDataUrl, telemetrySnapshot } = req.body ?? {};
+    if (!telemetrySnapshot || typeof telemetrySnapshot !== 'object') {
+      return res.status(400).json({ error: 'telemetrySnapshot payload is required.' });
+    }
+
+    const imagePart = parseSafeBase64Image(imageDataUrl);
+
+    const analysisSchema = {
+      type: Type.OBJECT,
+      properties: {
+        executiveSummary: {
+          type: Type.STRING,
+          description: 'Concise 3-4 sentence executive mission briefing summarizing scene damage, survivor locations, and swarm performance.',
+        },
+        severityRating: {
+          type: Type.STRING,
+          enum: ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'],
+        },
+        operationalVerdict: {
+          type: Type.STRING,
+          description: 'Short 1-sentence tactical readiness headline.',
+        },
+        keyFindings: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '4 to 6 specific empirical insights grounded strictly in the observed targets and visual frame.',
+        },
+        zoneAssessments: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              zoneId: { type: Type.STRING },
+              droneId: { type: Type.STRING },
+              coveragePercent: { type: Type.NUMBER },
+              targetsDetected: { type: Type.INTEGER },
+              statusNote: { type: Type.STRING },
+              riskLevel: {
+                type: Type.STRING,
+                enum: ['CRITICAL', 'HIGH', 'MODERATE', 'CLEAR'],
+              },
+            },
+            required: ['zoneId', 'droneId', 'coveragePercent', 'targetsDetected', 'statusNote', 'riskLevel'],
+          },
+        },
+        prioritizedExtractions: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              rank: { type: Type.INTEGER },
+              targetId: { type: Type.STRING },
+              targetType: { type: Type.STRING },
+              coordinates: { type: Type.STRING },
+              rationale: { type: Type.STRING },
+              recommendedAsset: { type: Type.STRING },
+            },
+            required: ['rank', 'targetId', 'targetType', 'coordinates', 'rationale', 'recommendedAsset'],
+          },
+          description: 'Top 5-8 highest-priority targets ordered for immediate rescue/response.',
+        },
+        dispatchRecommendations: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: '4 concrete actionable field commands for rescue boats, K9/SAR teams, engineering, and air support.',
+        },
+        swarmPerformanceAudit: {
+          type: Type.OBJECT,
+          properties: {
+            resilienceNote: { type: Type.STRING },
+            batteryAndRangeNote: { type: Type.STRING },
+            sensorFusionNote: { type: Type.STRING },
+          },
+          required: ['resilienceNote', 'batteryAndRangeNote', 'sensorFusionNote'],
+        },
+      },
+      required: [
+        'executiveSummary',
+        'severityRating',
+        'operationalVerdict',
+        'keyFindings',
+        'zoneAssessments',
+        'prioritizedExtractions',
+        'dispatchRecommendations',
+        'swarmPerformanceAudit',
+      ],
+    };
+
+    const telemetryText = JSON.stringify(telemetrySnapshot, null, 2).slice(0, 48000);
+    const parts: any[] = [];
+    if (imagePart) parts.push(imagePart);
+    parts.push({
+      text: `Perform a comprehensive post-scan Search & Rescue + Swarm Telemetry AI Analysis based strictly on this completed mission telemetry and aerial imagery.
+
+TELEMETRY SNAPSHOT:
+${telemetryText}
+
+Requirements:
+- Cross-reference every zone Z1..Z5 (cols 0-5, 6-11, 12-17, 18-23, 24-29) and exact detected targets (humans, animals, vehicles, broken infrastructure/dam, structural cracks) with GPS & grid coordinates.
+- If any drone failed and surviving drones compensated across zones, explicitly evaluate that failover resilience.
+- Rank top priority targets (survivors & critical infrastructure hazards first) with concrete rescue assets (swift-water raft, helicopter hoist, structural USAR team, HazMat/engineering).
+- Stay strictly factual to the provided telemetry and visual frame.`,
+    });
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-4-hydrogen',
+      contents: { parts },
+      config: {
+        systemInstruction:
+          'You are a Principal Autonomous Drone Swarm Tactical Commander and Search-and-Rescue Intelligence Analyst. Produce razor-sharp, evidence-grounded post-scan reports without filler or fabricated numbers.',
+        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+        responseMimeType: 'application/json',
+        responseSchema: analysisSchema,
+      },
+    });
+
+    const rawText = (response.text || '{}').replace(/```json/gi, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(rawText);
+
+    return res.json({
+      ...parsed,
+      generatedAt: new Date().toISOString(),
+      model: 'gemini-4-hydrogen',
+    });
+  } catch (error: any) {
+    console.error('Error in /api/gemini/mission-analysis:', error);
+    const classified = classifyGeminiError(error);
+    return res.status(classified.status).json({ error: classified.message });
+  }
+});
+
+// Sophisticated Streaming Swarm AI Intelligence Endpoint
+app.post('/api/gemini/swarm-chat', async (req, res) => {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({
+        error: 'GEMINI_API_KEY is not configured on the server. Please check Settings > Secrets.',
+      });
+    }
+
+    const {
+      message,
+      history = [],
+      telemetrySnapshot,
+      imageDataUrl,
+      attachedImages = [],
+      reasoningLevel = 'HIGH',
+    } = req.body ?? {};
+
+    if (typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'A non-empty message prompt is required.' });
+    }
+
+    const resolvedThinking =
+      reasoningLevel === 'LOW'
+        ? ThinkingLevel.LOW
+        : reasoningLevel === 'MEDIUM'
+        ? ThinkingLevel.MEDIUM
+        : ThinkingLevel.HIGH;
+
+    const telemetryJson = telemetrySnapshot
+      ? JSON.stringify(telemetrySnapshot, null, 2).slice(0, 48000)
+      : '{}';
+
+    const systemInstruction = `You are "Swarm AI" — an ultra-advanced Autonomous Reconnaissance Drone Swarm Architect, Tactical SAR Commander, and Embedded Robotics Engineer integrated inside the Autonomous Recon Swarm GCS.
+
+ARCHITECTURE FACTS OF THIS SWARM PLATFORM:
+- Fleet: 5 Autonomous Amphibious Recon Drones (D1–D5) operating over a 30×20 discrete tactical grid (600 cells, 32px/cell = 960×640px).
+- Nominal Zones: Z1 (cols 0–5, D1), Z2 (cols 6–11, D2), Z3 (cols 12–17, D3 bridge relay), Z4 (cols 18–23, D4), Z5 (cols 24–29, D5).
+- Resilience & Failover: When all 5 are healthy, drones stay strictly in their own 6-column corridors. When any drone fails, surviving drones immediately absorb its unvisited zone cells proportionally across nearest neighbors via serpentine sweeps without waiting for home zones to finish.
+- Edge Compute & Sensors: NVIDIA Jetson Orin NX (16GB), 68%-pruned YOLOv8 TensorRT (~4.8 MB, >30 FPS), 360° LiDAR (36 beams), EKF fusion of RGB Optical + LiDAR + IMU scan matching.
+- Mesh & Amphibious Hydro Suite: 802.11s peer mesh routing (D3 relay), Turtle Mode (reversing diagonal M1/M3 motors on water inversion), Automated Rotor-Cut, Motorized Winch, Acoustic ToF bathymetry Depth = (v * t) / 2 (v ≈ 1482 m/s), RTK-GNSS sonar timestamping.
+
+CURRENT LIVE TELEMETRY & MISSION CONTEXT:
+${telemetryJson}
+
+RESPONSE RULES:
+1. Ground every metric, drone status, coordinate, GPS location, battery %, and target ID strictly in the live telemetry snapshot (and any visual frames or uploaded images attached).
+2. Answer whatever the user asks cleanly, clearly, and thoroughly — from tactical rescue triage & dispatch to pathfinding math, avionics/SLAM diagnostics, mesh networking, hydro-bathymetry, or visual analysis of uploaded photos.
+3. Use clean Markdown formatting (headings, lists, compact tables, formulas) when helpful, without inventing fake sensor readings.`;
+
+    const safeHistory = Array.isArray(history)
+      ? history
+          .slice(-12)
+          .filter(
+            (m: any) =>
+              m &&
+              (m.role === 'user' || m.role === 'model') &&
+              typeof m.text === 'string' &&
+              m.text.trim().length > 0
+          )
+          .map((m: any) => ({
+            role: m.role as 'user' | 'model',
+            parts: [{ text: m.text.slice(0, 8000) }],
+          }))
+      : [];
+
+    const userParts: any[] = [];
+    const visualFramePart = parseSafeBase64Image(imageDataUrl);
+    if (visualFramePart) userParts.push(visualFramePart);
+
+    if (Array.isArray(attachedImages)) {
+      for (const rawImg of attachedImages.slice(0, 4)) {
+        const parsedImg = parseSafeBase64Image(rawImg);
+        if (parsedImg) userParts.push(parsedImg);
+      }
+    }
+
+    userParts.push({ text: message.trim().slice(0, 12000) });
+
+    const contents = [
+      ...safeHistory,
+      {
+        role: 'user' as const,
+        parts: userParts,
+      },
+    ];
+
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+
+    const stream = await ai.models.generateContentStream({
+      model: 'gemini-4-hydrogen',
+      contents,
+      config: {
+        systemInstruction,
+        thinkingConfig: {
+          thinkingLevel: resolvedThinking,
+        },
+      },
+    });
+
+    for await (const chunk of stream) {
+      const chunkText = chunk.text || '';
+      if (chunkText) {
+        res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+      }
+    }
+
+    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    return res.end();
+  } catch (error: any) {
+    console.error('Error in /api/gemini/swarm-chat:', error);
+    const classified = classifyGeminiError(error);
+    if (!res.headersSent) {
+      return res.status(classified.status).json({ error: classified.message });
+    }
+    res.write(`data: ${JSON.stringify({ error: classified.message })}\n\n`);
+    return res.end();
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({

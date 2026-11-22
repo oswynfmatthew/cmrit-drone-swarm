@@ -132,8 +132,8 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
       case 'FAILED':
       case 'LOW_BATTERY':
         return (
-          <span className="flex items-center gap-1.5 text-rose-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+          <span className="flex items-center gap-1.5 text-red-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
             <span>FAULT</span>
           </span>
         );
@@ -149,15 +149,15 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
       case 'COMPLETED':
       case 'COMPLETE':
         return (
-          <span className="flex items-center gap-1.5 text-sky-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+          <span className="flex items-center gap-1.5 text-red-400">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
             <span>COMPLETE</span>
           </span>
         );
       default:
         return (
-          <span className="flex items-center gap-1.5 text-slate-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+          <span className="flex items-center gap-1.5 text-zinc-300">
+            <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
             <span>READY</span>
           </span>
         );
@@ -174,26 +174,26 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-lg flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-xl flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2.5">
-            <Activity className="w-5 h-5 text-sky-400" />
+            <Activity className="w-5 h-5 text-red-500" />
             Autonomous Recon Mission Overview
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-zinc-400 mt-1">
             Comprehensive telemetry, area coverage statistics, classified target dossiers, and ground control dispatch feed.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0e1624] border border-[#29374d] rounded-lg text-xs font-mono">
-            <span className="text-slate-400">STATUS:</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#06070a] border border-zinc-800 rounded-lg text-xs font-mono">
+            <span className="text-zinc-400">STATUS:</span>
             <span className="text-emerald-400 font-bold">{missionStatus}</span>
           </div>
           <button
             onClick={() => onSendCommand('START')}
             disabled={missionStatus === 'ACTIVE'}
-            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg transition"
+            className="px-4 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-40 text-white font-bold text-xs rounded-lg shadow-md shadow-red-950/60 border border-red-500/40 transition"
           >
             Start Mission
           </button>
@@ -203,15 +203,15 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
       {/* 4 Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Status */}
-        <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#9ca8b8] mb-1 flex items-center justify-between">
+        <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md">
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1 flex items-center justify-between">
             <span>MISSION STATUS</span>
-            <span className="text-slate-400 text-[10px]">GCS ENGINE</span>
+            <span className="text-zinc-500 text-[10px]">GCS ENGINE</span>
           </div>
           <div className="text-2xl font-bold text-white mt-2">
             {renderStatusBadge(missionStatus)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-2">
+          <div className="text-[11px] text-zinc-400 mt-2">
             {missionStatus === 'ACTIVE'
               ? 'Autonomous SLAM exploration in progress'
               : missionStatus === 'COMPLETE'
@@ -221,29 +221,29 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </div>
 
         {/* Card 2: Area Covered */}
-        <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#9ca8b8] mb-1 flex items-center justify-between">
+        <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md">
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1 flex items-center justify-between">
             <span>AREA COVERED</span>
-            <span className="text-sky-400 font-mono text-[11px]">VOXEL SWEEP</span>
+            <span className="text-red-400 font-mono text-[11px]">VOXEL SWEEP</span>
           </div>
-          <div className="text-2xl font-bold text-sky-400 mt-2 font-mono">
+          <div className="text-2xl font-bold text-red-400 mt-2 font-mono">
             {areaCovered.toFixed(1)}%
           </div>
-          <div className="w-full bg-[#0e1624] h-2.5 rounded-full mt-2 overflow-hidden border border-[#29374d]">
+          <div className="w-full bg-[#050507] h-2.5 rounded-full mt-2 overflow-hidden border border-zinc-800">
             <div
-              className="bg-gradient-to-r from-sky-500 to-emerald-400 h-full rounded-full transition-all duration-300"
+              className="bg-gradient-to-r from-red-600 to-rose-400 h-full rounded-full transition-all duration-300"
               style={{ width: `${Math.min(100, areaCovered)}%` }}
             />
           </div>
-          <div className="text-[11px] text-slate-400 mt-1.5 flex justify-between">
+          <div className="text-[11px] text-zinc-400 mt-1.5 flex justify-between">
             <span>5 Partitioned Zones</span>
             <span>{Math.round(areaCovered)}% mapped</span>
           </div>
         </div>
 
         {/* Card 3: Targets */}
-        <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#9ca8b8] mb-1 flex items-center justify-between">
+        <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md">
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1 flex items-center justify-between">
             <span>VERIFIED TARGETS</span>
             <span className="text-emerald-400 text-[10px] font-mono">YOLO + EKF</span>
           </div>
@@ -253,7 +253,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
               {verifiedTargets.length} Verified
             </span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2">
+          <div className="text-[11px] text-zinc-400 mt-2">
             {missionStatus === 'ACTIVE'
               ? 'Real-time swarm perception sweep in progress'
               : missionStatus === 'COMPLETE'
@@ -263,29 +263,29 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </div>
 
         {/* Card 4: Mission Time */}
-        <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#9ca8b8] mb-1 flex items-center justify-between">
+        <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md">
+          <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1 flex items-center justify-between">
             <span>MISSION TIME</span>
-            <span className="text-emerald-400 text-[10px] font-mono">EDGE CLOCK</span>
+            <span className="text-red-400 text-[10px] font-mono">EDGE CLOCK</span>
           </div>
-          <div className="text-2xl font-bold text-emerald-400 mt-2 flex items-center gap-2 font-mono">
-            <Clock className="w-6 h-6 text-emerald-400" />
+          <div className="text-2xl font-bold text-white mt-2 flex items-center gap-2 font-mono">
+            <Clock className="w-6 h-6 text-red-500" />
             <span>{missionTime.toFixed(1)}s</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-2">
+          <div className="text-[11px] text-zinc-400 mt-2">
             Synchronized across Swarm Mesh Network
           </div>
         </div>
       </div>
 
-      {/* Autonomous Recon Drone Fleet Status (D1 to D5) with EXPLICIT RED HIGHLIGHT if failed */}
-      <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md space-y-3">
+      {/* Autonomous Recon Drone Fleet Status (D1 to D5) */}
+      <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-white flex items-center gap-2">
-            <Radio className="w-4 h-4 text-sky-400" />
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <Radio className="w-4 h-4 text-red-500" />
             Autonomous Drone Fleet Telemetry Status (D1 - D5)
           </h3>
-          <span className="text-xs font-mono text-slate-400">
+          <span className="text-xs font-mono text-zinc-400">
             {Object.values(drones).filter((d) => d.healthy).length} / 5 Operational
           </span>
         </div>
@@ -299,8 +299,8 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                 key={drone.drone_id}
                 className={`p-3.5 rounded-xl border transition flex flex-col justify-between gap-2.5 ${
                   isFailed
-                    ? 'border-rose-500 bg-rose-950/60 text-rose-200 ring-2 ring-rose-500/60 shadow-rose-950/50 shadow-lg'
-                    : 'bg-[#121a28] border-[#29374d]'
+                    ? 'border-red-600 bg-red-950/50 text-red-200 ring-2 ring-red-500/50 shadow-red-950/50 shadow-lg'
+                    : 'bg-[#07080c] border-zinc-800'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -309,42 +309,42 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                     <span
                       className={`w-2.5 h-2.5 rounded-full ${
                         isFailed
-                          ? 'bg-rose-500 animate-ping'
+                          ? 'bg-red-500 animate-ping'
                           : drone.status === 'COMPLETED'
                           ? 'bg-emerald-400'
-                          : 'bg-sky-400 animate-pulse'
+                          : 'bg-red-500 animate-pulse'
                       }`}
                     />
                   </span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#0e1624] text-slate-400 border border-[#29374d]">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#050507] text-zinc-400 border border-zinc-800">
                     Zone Z{idx + 1}
                   </span>
                 </div>
 
                 {isFailed ? (
-                  <div className="bg-rose-900/80 border border-rose-500/80 text-rose-200 font-mono font-bold text-[10px] px-2 py-1 rounded text-center tracking-wide shadow">
+                  <div className="bg-red-900/80 border border-red-500/80 text-red-200 font-mono font-bold text-[10px] px-2 py-1 rounded text-center tracking-wide shadow">
                     CRITICAL FAULT (FAILED)
                   </div>
                 ) : (
-                  <div className="bg-[#0e1624] border border-[#29374d] text-emerald-400 font-mono font-semibold text-[10px] px-2 py-1 rounded text-center">
+                  <div className="bg-[#050507] border border-zinc-800 text-emerald-400 font-mono font-semibold text-[10px] px-2 py-1 rounded text-center">
                     ONLINE ({drone.status})
                   </div>
                 )}
 
-                <div className="text-[11px] font-mono space-y-1 text-slate-400 pt-1 border-t border-[#253347]">
+                <div className="text-[11px] font-mono space-y-1 text-zinc-400 pt-1 border-t border-zinc-800">
                   <div className="flex justify-between">
                     <span>Battery:</span>
-                    <strong className={drone.battery < 20 ? 'text-rose-400' : 'text-slate-200'}>
+                    <strong className={drone.battery < 20 ? 'text-red-400' : 'text-zinc-200'}>
                       {drone.battery.toFixed(0)}%
                     </strong>
                   </div>
                   <div className="flex justify-between">
                     <span>Assigned Task:</span>
-                    <span className="text-slate-300 truncate">{drone.task_id || 'IDLE'}</span>
+                    <span className="text-zinc-300 truncate">{drone.task_id || 'IDLE'}</span>
                   </div>
                   {isFailed && (
-                    <div className="text-[10px] text-rose-300 font-semibold pt-0.5 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3 text-rose-400" />
+                    <div className="text-[10px] text-red-300 font-semibold pt-0.5 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 text-red-400" />
                       <span>Tasks Reassigned</span>
                     </div>
                   )}
@@ -356,30 +356,30 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
       </div>
 
       {/* Target Intelligence Dossiers */}
-      <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md">
+      <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <h3 className="text-base font-semibold text-white flex items-center gap-2">
-            <Crosshair className="w-4 h-4 text-emerald-400" />
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <Crosshair className="w-4 h-4 text-red-500" />
             Classified Recon Target Dossiers (Multi-Modal Sensor Fusion)
           </h3>
-          <span className="text-xs font-mono text-slate-400 flex items-center gap-2 bg-[#0e1624] px-2.5 py-1 rounded-md border border-[#29374d]">
+          <span className="text-xs font-mono text-zinc-400 flex items-center gap-2 bg-[#06070a] px-2.5 py-1 rounded-md border border-zinc-800">
             <span className={`w-2 h-2 rounded-full ${verifiedTargets.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
             <strong className="text-emerald-400">{verifiedTargets.length}</strong> Target{verifiedTargets.length === 1 ? '' : 's'} Verified in Real Time
           </span>
         </div>
 
         {filteredTargets.length === 0 ? (
-          <div className="p-8 rounded-xl bg-[#0e1624] border border-[#222f42] text-center space-y-3">
-            <div className="w-14 h-14 rounded-full border border-sky-500/30 mx-auto flex items-center justify-center relative bg-sky-950/20">
-              <Radar className="w-7 h-7 text-sky-400 animate-spin" style={{ animationDuration: '4s' }} />
-              <span className="w-2.5 h-2.5 rounded-full bg-sky-400 absolute animate-ping" />
+          <div className="p-8 rounded-xl bg-[#06070a] border border-zinc-800 text-center space-y-3">
+            <div className="w-14 h-14 rounded-full border border-red-500/35 mx-auto flex items-center justify-center relative bg-red-950/20">
+              <Radar className="w-7 h-7 text-red-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 absolute animate-ping" />
             </div>
             <div className="text-sm font-semibold text-white">
               {missionStatus === 'ACTIVE'
                 ? 'Drones Actively Sweeping Grid Sectors...'
                 : 'Zero Pre-Set Targets • Dynamic Real-Time Discovery'}
             </div>
-            <p className="text-xs text-slate-400 max-w-lg mx-auto">
+            <p className="text-xs text-zinc-400 max-w-lg mx-auto">
               {missionStatus === 'ACTIVE'
                 ? 'No targets confirmed yet. As drones D1–D5 fly their search paths and enter exact grid cells with survivors, vehicles, or animals, their verified dossiers will dynamically populate here in 100% real-time synchronization.'
                 : 'Targets are not pre-exposed. Click "Start Mission" to deploy the autonomous drone swarm. Each target dossier, GPS position, and multi-sensor confidence breakdown will appear live the exact millisecond a drone detects it.'}
@@ -402,12 +402,12 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
               return (
                 <div
                   key={target.target_id}
-                  className="p-4 rounded-xl border flex flex-col justify-between gap-3 transition-all duration-500 animate-fade-in bg-[#152336] border-emerald-500/40 shadow-emerald-950/20 shadow-lg"
+                  className="p-4 rounded-xl border flex flex-col justify-between gap-3 transition-all duration-500 animate-fade-in bg-[#08090d] border-emerald-500/40 shadow-black shadow-lg"
                 >
                   <div>
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-base text-white flex items-center gap-2">
-                        <span className="font-mono text-sky-400">{target.target_id}</span>
+                        <span className="font-mono text-red-400">{target.target_id}</span>
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase border ${
                             target.type === 'HUMAN'
@@ -435,29 +435,29 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                       </span>
                     </div>
 
-                    <div className="mt-3 space-y-1.5 text-xs text-slate-300">
-                      <div className="flex items-center gap-1 text-slate-300">
-                        <MapPin className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
-                        <span className="font-mono text-slate-200 truncate">{geoCoord}</span>
+                    <div className="mt-3 space-y-1.5 text-xs text-zinc-300">
+                      <div className="flex items-center gap-1 text-zinc-300">
+                        <MapPin className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                        <span className="font-mono text-zinc-200 truncate">{geoCoord}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Grid Coordinates:</span>
+                        <span className="text-zinc-400">Grid Coordinates:</span>
                         <span className="font-mono text-white">
                           [{target.col ?? target.x}, {target.row ?? target.y}] • Cell #{target.cell_id ?? ((target.row ?? target.y) * 30 + (target.col ?? target.x))}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Discovering Drone:</span>
-                        <span className="font-mono text-sky-400 font-semibold">
+                        <span className="text-zinc-400">Discovering Drone:</span>
+                        <span className="font-mono text-red-400 font-semibold">
                           {target.assigned_drone || 'D1'}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Priority Level:</span>
+                        <span className="text-zinc-400">Priority Level:</span>
                         <span
                           className={
                             target.type === 'HUMAN' || target.type === 'BROKEN_DAM'
-                              ? 'text-rose-400 font-bold'
+                              ? 'text-red-400 font-bold'
                               : target.type === 'BROKEN_INFRASTRUCTURE'
                               ? 'text-yellow-400 font-bold'
                               : target.type === 'VEHICLE'
@@ -482,16 +482,16 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                   </div>
 
                   {/* Sensor Fusion Confidence breakdown */}
-                  <div className="pt-3 border-t border-[#29374d] space-y-2 text-[11px]">
+                  <div className="pt-3 border-t border-zinc-800 space-y-2 text-[11px]">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400">RGB Optical Camera:</span>
-                      <span className="font-mono text-slate-200">
+                      <span className="text-zinc-400">RGB Optical Camera:</span>
+                      <span className="font-mono text-zinc-200">
                         {`${Math.round((target.rgbConfidence || 0.95) * 100)}%`}
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400">360° LiDAR / Radar:</span>
-                      <span className="font-mono text-slate-200">
+                      <span className="text-zinc-400">360° LiDAR / Radar:</span>
+                      <span className="font-mono text-zinc-200">
                         {`${Math.round((target.lidarConfidence || 0.98) * 100)}%`}
                       </span>
                     </div>
@@ -508,7 +508,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={() => handleEditClick(target)}
-                        className="flex-1 py-1 px-2 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white border border-sky-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
+                        className="flex-1 py-1 px-2 bg-[#14151c] hover:bg-red-600 text-zinc-200 hover:text-white border border-zinc-700 hover:border-red-500 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
                       >
                         <Edit2 className="w-3 h-3" />
                         <span>Modify</span>
@@ -517,7 +517,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                       {onDeleteTarget && (
                         <button
                           onClick={() => onDeleteTarget(target.target_id)}
-                          className="flex-1 py-1 px-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
+                          className="flex-1 py-1 px-2 bg-red-600/20 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/40 rounded text-xs font-semibold transition flex items-center justify-center gap-1"
                         >
                           <Trash2 className="w-3 h-3" />
                           <span>Delete</span>
@@ -532,29 +532,29 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         )}
       </div>
 
-      {/* CUSTOM TARGET SEARCH & PRIORITY REGISTRY (User Requested: Add/Delete/Modify any target) */}
-      <div className="bg-[#182235] border border-[#29374d] rounded-2xl p-6 shadow-xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-[#29374d] gap-3">
+      {/* CUSTOM TARGET SEARCH & PRIORITY REGISTRY */}
+      <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-2xl p-6 shadow-xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-zinc-800 gap-3">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <TargetIcon className="w-5 h-5 text-indigo-400" />
+              <TargetIcon className="w-5 h-5 text-red-500" />
               Autonomous Search Target Director & Priority Focus Registry
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-zinc-400 mt-0.5">
               Configure custom search objectives across categories (Humans, Vehicles, Buildings, Plants, Animals). Swarm drones prioritize and allocate sensor cones specifically to these designated targets.
             </p>
           </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1 bg-[#0e1624] p-1 rounded-lg border border-[#29374d] text-xs">
+          {/* Filter Tabs */}
+          <div className="flex items-center gap-1 bg-[#06070a] p-1 rounded-lg border border-zinc-800 text-xs">
             {['ALL', 'HUMAN', 'VEHICLE', 'BUILDING', 'PLANT', 'ANIMAL'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setFilterType(cat)}
                 className={`px-2.5 py-1 rounded font-semibold transition ${
                   filterType === cat
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-red-600 text-white shadow'
+                    : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 {cat}
@@ -564,17 +564,17 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </div>
 
         {/* Target Form (Add New or Edit Existing) */}
-        <form onSubmit={handleSaveTarget} className="bg-[#0e1624] border border-[#29374d] rounded-xl p-5 space-y-4">
+        <form onSubmit={handleSaveTarget} className="bg-[#06070a] border border-zinc-800 rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold uppercase text-slate-300 flex items-center gap-2">
-              <PlusCircle className="w-4 h-4 text-emerald-400" />
+            <span className="text-xs font-mono font-bold uppercase text-zinc-300 flex items-center gap-2">
+              <PlusCircle className="w-4 h-4 text-red-500" />
               {editingTargetId ? `Modify Target ${editingTargetId}` : 'Register New Mission Search Target'}
             </span>
             {editingTargetId && (
               <button
                 type="button"
                 onClick={handleCancelEdit}
-                className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-mono"
+                className="text-xs text-zinc-400 hover:text-white flex items-center gap-1 font-mono"
               >
                 <X className="w-3.5 h-3.5" />
                 Cancel Edit
@@ -585,11 +585,11 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
             {/* Target Category */}
             <div>
-              <label className="text-slate-400 block mb-1 font-mono">Target Category:</label>
+              <label className="text-zinc-400 block mb-1 font-mono">Target Category:</label>
               <select
                 value={formType}
                 onChange={(e) => setFormType(e.target.value as TargetType)}
-                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-semibold focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-[#0b0c10] border border-zinc-800 rounded-lg px-2.5 py-2 text-white font-semibold focus:border-red-500 focus:outline-none"
               >
                 <option value="HUMAN">HUMAN (Survivors / Evacuees)</option>
                 <option value="VEHICLE">VEHICLE (Cars, Trucks, Boats)</option>
@@ -603,11 +603,11 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
 
             {/* Priority Level */}
             <div>
-              <label className="text-slate-400 block mb-1 font-mono">Priority Level:</label>
+              <label className="text-zinc-400 block mb-1 font-mono">Priority Level:</label>
               <select
                 value={formPriority}
                 onChange={(e) => setFormPriority(e.target.value as TargetPriority)}
-                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-semibold focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-[#0b0c10] border border-zinc-800 rounded-lg px-2.5 py-2 text-white font-semibold focus:border-red-500 focus:outline-none"
               >
                 <option value="HIGH">HIGH (Red Alert Focus)</option>
                 <option value="MEDIUM">MEDIUM (Standard Recon)</option>
@@ -617,56 +617,56 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
 
             {/* Grid X Coordinate */}
             <div>
-              <label className="text-slate-400 block mb-1 font-mono">Grid X (0 - 29):</label>
+              <label className="text-zinc-400 block mb-1 font-mono">Grid X (0 - 29):</label>
               <input
                 type="number"
                 min="0"
                 max="29"
                 value={formX}
                 onChange={(e) => setFormX(Math.min(29, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-[#0b0c10] border border-zinc-800 rounded-lg px-2.5 py-2 text-white font-mono focus:border-red-500 focus:outline-none"
               />
             </div>
 
             {/* Grid Y Coordinate */}
             <div>
-              <label className="text-slate-400 block mb-1 font-mono">Grid Y (0 - 19):</label>
+              <label className="text-zinc-400 block mb-1 font-mono">Grid Y (0 - 19):</label>
               <input
                 type="number"
                 min="0"
                 max="19"
                 value={formY}
                 onChange={(e) => setFormY(Math.min(19, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white font-mono focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-[#0b0c10] border border-zinc-800 rounded-lg px-2.5 py-2 text-white font-mono focus:border-red-500 focus:outline-none"
               />
             </div>
 
             {/* Target Label */}
             <div>
-              <label className="text-slate-400 block mb-1 font-mono">Target Label / Note:</label>
+              <label className="text-zinc-400 block mb-1 font-mono">Target Label / Note:</label>
               <input
                 type="text"
                 placeholder="e.g. Roof Group, Rare Flora..."
                 value={formLabel}
                 onChange={(e) => setFormLabel(e.target.value)}
-                className="w-full bg-[#182235] border border-[#29374d] rounded-lg px-2.5 py-2 text-white focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-[#0b0c10] border border-zinc-800 rounded-lg px-2.5 py-2 text-white focus:border-red-500 focus:outline-none"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-[#253347]">
+          <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
             {editingTargetId && (
               <button
                 type="button"
                 onClick={handleCancelEdit}
-                className="px-4 py-2 bg-[#222c3e] hover:bg-[#2b394e] text-slate-300 font-semibold text-xs rounded-lg transition"
+                className="px-4 py-2 bg-[#12131a] hover:bg-[#1a1b24] text-zinc-300 font-semibold text-xs rounded-lg transition"
               >
                 Cancel
               </button>
             )}
             <button
               type="submit"
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow transition flex items-center gap-1.5"
+              className="px-5 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold text-xs rounded-lg shadow-md shadow-red-950/60 transition flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />
               <span>{editingTargetId ? 'Apply Target Modifications' : 'Add Target to Autonomous Swarm Focus'}</span>
@@ -675,10 +675,10 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </form>
 
         {/* Targets Table */}
-        <div className="border border-[#29374d] rounded-xl overflow-hidden">
+        <div className="border border-zinc-800 rounded-xl overflow-hidden bg-[#06070a]">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-[#0e1624] text-slate-400 border-b border-[#29374d]">
+              <thead className="bg-[#0b0c10] text-zinc-400 border-b border-zinc-800">
                 <tr>
                   <th className="py-2.5 px-3">ID</th>
                   <th className="py-2.5 px-3">Category</th>
@@ -690,16 +690,16 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                   <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#253347]">
+              <tbody className="divide-y divide-zinc-800/80">
                 {filteredTargets.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-8 px-4 text-center text-slate-400">
+                    <td colSpan={8} className="py-8 px-4 text-center text-zinc-400">
                       <div className="flex flex-col items-center justify-center gap-2">
-                        <Radar className="w-5 h-5 text-indigo-400 animate-spin" style={{ animationDuration: '4s' }} />
-                        <span className="text-xs font-sans text-slate-300 font-medium">
+                        <Radar className="w-5 h-5 text-red-500 animate-spin" style={{ animationDuration: '4s' }} />
+                        <span className="text-xs font-sans text-zinc-300 font-medium">
                           No verified targets in registry yet
                         </span>
-                        <span className="text-[11px] font-sans text-slate-500">
+                        <span className="text-[11px] font-sans text-zinc-500">
                           Targets populate here in 100% real-time synchronization as drones survey each grid coordinate.
                         </span>
                       </div>
@@ -707,91 +707,92 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                   </tr>
                 ) : (
                   filteredTargets.map((t) => {
-                  const geo = t.geoCoordinates || calculateGeoCoordinates(t.x, t.y);
-                  return (
-                    <tr key={t.target_id} className="hover:bg-[#152336] transition">
-                      <td className="py-2 px-3 font-bold text-sky-400">{t.target_id}</td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                            t.type === 'HUMAN'
-                              ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                              : t.type === 'VEHICLE'
-                              ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                              : t.type === 'ANIMAL' || t.type === 'BROKEN_DAM'
-                              ? 'bg-red-500/20 text-red-300 border-red-500/40'
-                              : t.type === 'BROKEN_INFRASTRUCTURE'
-                              ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
-                              : t.type === 'PLANT'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                          }`}
-                        >
-                          {t.type.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={
-                            t.type === 'HUMAN' || t.type === 'BROKEN_DAM'
-                              ? 'text-rose-400 font-bold'
-                              : t.type === 'BROKEN_INFRASTRUCTURE'
-                              ? 'text-yellow-400 font-bold'
-                              : t.type === 'VEHICLE'
-                              ? 'text-sky-400 font-bold'
-                              : t.type === 'PLANT'
-                              ? 'text-emerald-400 font-bold'
-                              : 'text-amber-500 font-bold'
-                          }
-                        >
-                          {t.type === 'HUMAN' || t.type === 'BROKEN_DAM'
-                            ? 'HIGH'
-                            : t.type === 'BROKEN_INFRASTRUCTURE'
-                            ? t.priority
-                            : t.type === 'VEHICLE'
-                            ? 'MEDIUM'
-                            : t.type === 'ANIMAL'
-                            ? 'MEDIUM'
-                            : 'LOW'}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-white">[{t.x}, {t.y}]</td>
-                      <td className="py-2 px-3 text-slate-400 text-[10px] truncate max-w-[130px]">{geo}</td>
-                      <td className="py-2 px-3 text-slate-200">{t.label || `${t.type} Objective`}</td>
-                      <td className="py-2 px-3">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            t.found
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          }`}
-                        >
-                          {t.found ? 'VERIFIED' : 'SEARCHING'}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleEditClick(t)}
-                            className="p-1 hover:bg-sky-600/30 text-sky-400 rounded transition"
-                            title="Modify Target"
+                    const geo = t.geoCoordinates || calculateGeoCoordinates(t.x, t.y);
+                    return (
+                      <tr key={t.target_id} className="hover:bg-[#12131a] transition">
+                        <td className="py-2 px-3 font-bold text-red-400">{t.target_id}</td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                              t.type === 'HUMAN'
+                                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                                : t.type === 'VEHICLE'
+                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                : t.type === 'ANIMAL' || t.type === 'BROKEN_DAM'
+                                ? 'bg-red-500/20 text-red-300 border-red-500/40'
+                                : t.type === 'BROKEN_INFRASTRUCTURE'
+                                ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                                : t.type === 'PLANT'
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          {onDeleteTarget && (
+                            {t.type.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={
+                              t.type === 'HUMAN' || t.type === 'BROKEN_DAM'
+                                ? 'text-red-400 font-bold'
+                                : t.type === 'BROKEN_INFRASTRUCTURE'
+                                ? 'text-yellow-400 font-bold'
+                                : t.type === 'VEHICLE'
+                                ? 'text-sky-400 font-bold'
+                                : t.type === 'PLANT'
+                                ? 'text-emerald-400 font-bold'
+                                : 'text-amber-500 font-bold'
+                            }
+                          >
+                            {t.type === 'HUMAN' || t.type === 'BROKEN_DAM'
+                              ? 'HIGH'
+                              : t.type === 'BROKEN_INFRASTRUCTURE'
+                              ? t.priority
+                              : t.type === 'VEHICLE'
+                              ? 'MEDIUM'
+                              : t.type === 'ANIMAL'
+                              ? 'MEDIUM'
+                              : 'LOW'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-white">[{t.x}, {t.y}]</td>
+                        <td className="py-2 px-3 text-zinc-400 text-[10px] truncate max-w-[130px]">{geo}</td>
+                        <td className="py-2 px-3 text-zinc-200">{t.label || `${t.type} Objective`}</td>
+                        <td className="py-2 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              t.found
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            }`}
+                          >
+                            {t.found ? 'VERIFIED' : 'SEARCHING'}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => onDeleteTarget(t.target_id)}
-                              className="p-1 hover:bg-rose-600/30 text-rose-400 rounded transition"
-                              title="Delete Target"
+                              onClick={() => handleEditClick(t)}
+                              className="p-1 hover:bg-red-600/30 text-zinc-300 hover:text-red-300 rounded transition"
+                              title="Modify Target"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                }))}
+                            {onDeleteTarget && (
+                              <button
+                                onClick={() => onDeleteTarget(t.target_id)}
+                                className="p-1 hover:bg-red-600/30 text-red-400 rounded transition"
+                                title="Delete Target"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -801,33 +802,33 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
       {/* Bottom Grid: Events Terminal & Command Monitor */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Events Feed (2 Cols) */}
-        <div className="lg:col-span-2 bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md flex flex-col">
+        <div className="lg:col-span-2 bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md flex flex-col">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-base font-semibold text-white flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-sky-400" />
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-red-500" />
               Mission Telemetry Event Feed
             </h3>
-            <span className="text-xs font-mono text-slate-400">{events.length} recorded events</span>
+            <span className="text-xs font-mono text-zinc-400">{events.length} recorded events</span>
           </div>
 
-          <div className="bg-[#0e1624] border border-[#29374d] rounded-lg p-3.5 min-h-[220px] max-h-[300px] overflow-y-auto font-mono text-xs space-y-2">
+          <div className="bg-[#06070a] border border-zinc-800 rounded-lg p-3.5 min-h-[220px] max-h-[300px] overflow-y-auto font-mono text-xs space-y-2">
             {events.length === 0 ? (
-              <div className="text-slate-500 italic">No mission events logged yet. Press START to deploy swarm.</div>
+              <div className="text-zinc-500 italic">No mission events logged yet. Press START to deploy swarm.</div>
             ) : (
               [...events].reverse().map((event, idx) => (
-                <div key={idx} className="flex items-start gap-2 text-slate-300">
-                  <span className="text-sky-400">•</span>
+                <div key={idx} className="flex items-start gap-2 text-zinc-300">
+                  <span className="text-red-500">•</span>
                   <span
                     className={
                       event.includes('DETECTED') || event.includes('FOUND')
                         ? 'text-emerald-400 font-bold'
                         : event.includes('FAILED')
-                        ? 'text-rose-400 font-bold'
+                        ? 'text-red-400 font-bold'
                         : event.includes('STARTED')
-                        ? 'text-sky-300 font-semibold'
+                        ? 'text-red-300 font-semibold'
                         : event.includes('REASSIGNED')
                         ? 'text-amber-300'
-                        : 'text-slate-300'
+                        : 'text-zinc-300'
                     }
                   >
                     {event}
@@ -839,31 +840,31 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
         </div>
 
         {/* Command Monitor & Fleet Summary (1 Col) */}
-        <div className="bg-[#182235] border border-[#29374d] rounded-xl p-5 shadow-md space-y-4 flex flex-col justify-between">
+        <div className="bg-[#0b0c10] border border-zinc-800/90 rounded-xl p-5 shadow-md space-y-4 flex flex-col justify-between">
           <div>
-            <h3 className="text-base font-semibold text-white flex items-center gap-2 mb-3">
-              <Zap className="w-4 h-4 text-amber-400" />
+            <h3 className="text-base font-bold text-white flex items-center gap-2 mb-3">
+              <Zap className="w-4 h-4 text-red-500" />
               Ground Command Monitor
             </h3>
 
             <div className="space-y-3 text-xs">
-              <div className="bg-[#0e1624] border border-[#29374d] p-3 rounded-lg">
-                <span className="text-slate-400 block text-[11px] mb-1">LAST DISPATCHED COMMAND:</span>
-                <span className="font-mono text-sky-400 font-bold text-sm">
+              <div className="bg-[#06070a] border border-zinc-800 p-3 rounded-lg">
+                <span className="text-zinc-400 block text-[11px] mb-1">LAST DISPATCHED COMMAND:</span>
+                <span className="font-mono text-red-400 font-bold text-sm">
                   {lastCommand || 'NO PENDING COMMAND'}
                 </span>
               </div>
 
-              <div className="bg-[#0e1624] border border-[#29374d] p-3 rounded-lg space-y-1.5">
-                <span className="text-slate-400 block text-[11px] mb-1">SWARM COMPUTE HEALTH:</span>
+              <div className="bg-[#06070a] border border-zinc-800 p-3 rounded-lg space-y-1.5">
+                <span className="text-zinc-400 block text-[11px] mb-1">SWARM COMPUTE HEALTH:</span>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Total Operational Drones:</span>
+                  <span className="text-zinc-400">Total Operational Drones:</span>
                   <span className="font-mono text-emerald-400 font-semibold">
                     {Object.values(drones).filter((d) => d.healthy).length} / 5
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Average Battery Level:</span>
+                  <span className="text-zinc-400">Average Battery Level:</span>
                   <span className="font-mono text-white">
                     {(
                       Object.values(drones).reduce((a, b) => a + b.battery, 0) / 5
@@ -871,7 +872,7 @@ export const MissionOverviewView: React.FC<MissionOverviewViewProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Mesh Network Status:</span>
+                  <span className="text-zinc-400">Mesh Network Status:</span>
                   <span className="font-mono text-emerald-400 font-semibold">ONLINE (802.11s)</span>
                 </div>
               </div>
